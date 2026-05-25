@@ -1,0 +1,33 @@
+FROM docker/sandbox-templates:claude-code-minimal
+
+USER root
+{{- if .Packages }}
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends {{ join .Packages " " }} \
+ && rm -rf /var/lib/apt/lists/*
+{{- end }}
+{{- range .RootBlocks }}
+
+{{ . }}
+{{- end }}
+
+USER agent
+{{- range .AgentBlocks }}
+
+{{ . }}
+{{- end }}
+{{- range .EnvBlocks }}
+
+{{ . }}
+{{- end }}
+{{- if .Plugins.Marketplaces }}
+{{ range .Plugins.Marketplaces }}
+RUN claude plugin marketplace add {{ . }}
+{{- end }}
+{{- end }}
+{{- if .Plugins.Install }}
+{{ range .Plugins.Install }}
+RUN claude plugin install {{ . }}
+{{- end }}
+{{- end }}

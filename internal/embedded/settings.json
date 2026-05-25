@@ -1,0 +1,8 @@
+{
+  "alwaysThinkingEnabled": true,
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "custom:sandbox",
+  "themeId": "custom:sandbox",
+  "defaultMode": "bypassPermissions",
+  "bypassPermissionsModeAccepted": true
+}
