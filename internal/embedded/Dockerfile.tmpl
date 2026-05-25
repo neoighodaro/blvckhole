@@ -1,12 +1,11 @@
 FROM docker/sandbox-templates:claude-code-minimal
 
 USER root
-{{- if .Packages }}
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends {{ join .Packages " " }} \
- && rm -rf /var/lib/apt/lists/*
-{{- end }}
+ && apt-get install -y --no-install-recommends zsh zsh-autosuggestions zsh-syntax-highlighting{{ if .Packages }} {{ join .Packages " " }}{{ end }} \
+ && rm -rf /var/lib/apt/lists/* \
+ && sed -i '/^agent:/ s|:[^:]*$|:/usr/bin/zsh|' /etc/passwd
 {{- range .RootBlocks }}
 
 {{ . }}

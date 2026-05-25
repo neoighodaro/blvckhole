@@ -27,6 +27,7 @@ var validAgents = map[string]bool{
 
 var validRuntimes = map[string]bool{
 	"node":   true,
+	"pnpm":   true,
 	"bun":    true,
 	"python": true,
 	"go":     true,
@@ -39,6 +40,11 @@ var nameRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 type ClaudePlugins struct {
 	Marketplaces []string `yaml:"marketplaces"`
 	Install      []string `yaml:"install"`
+}
+
+type ShellConfig struct {
+	Directory string            `yaml:"directory"`
+	Aliases   map[string]string `yaml:"aliases"`
 }
 
 type ClaudeConfig struct {
@@ -57,6 +63,7 @@ type Config struct {
 	Env      map[string]string `yaml:"env"`
 	EnvFile  []string          `yaml:"env_file"`
 	Network  []string          `yaml:"network"`
+	Shell    ShellConfig       `yaml:"shell"`
 	Claude   ClaudeConfig      `yaml:"claude"`
 	Memory   string            `yaml:"memory"`
 
@@ -155,6 +162,12 @@ func (c *Config) Validate() error {
 				runtimes = append(runtimes, r)
 			}
 			return fmt.Errorf("unsupported runtime %q: must be one of: %s", name, strings.Join(runtimes, ", "))
+		}
+	}
+
+	if _, hasPnpm := c.Runtimes["pnpm"]; hasPnpm {
+		if _, hasNode := c.Runtimes["node"]; !hasNode {
+			return fmt.Errorf("pnpm requires the node runtime: add 'node' to your runtimes")
 		}
 	}
 

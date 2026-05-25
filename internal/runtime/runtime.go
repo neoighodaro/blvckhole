@@ -10,6 +10,7 @@ type Runtime interface {
 
 var registry = map[string]Runtime{
 	"node":   &NodeRuntime{},
+	"pnpm":   &PnpmRuntime{},
 	"bun":    &BunRuntime{},
 	"python": &PythonRuntime{},
 	"go":     &GoRuntime{},

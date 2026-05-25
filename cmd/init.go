@@ -28,7 +28,8 @@ packages: []
 
 # Language runtimes
 runtimes: {}
-  # node: "22"
+  # node: "24"
+  # pnpm: "11"
   # bun: "latest"
   # python: "3.12"
   # go: "1.23"
@@ -48,6 +49,17 @@ env: {}
 env_file: []
   # - .env
   # - .env.sandbox
+
+# Shell configuration (ZSH is the default shell)
+shell:
+  # Default working directory when opening a shell
+  # directory: /home/agent/project/src
+
+  # Custom aliases (added alongside built-in aliases)
+  aliases: {}
+    # g: "git"
+    # dc: "docker compose"
+    # clr: "clear"
 
 # Network whitelist (only these domains are reachable from the sandbox)
 network: []

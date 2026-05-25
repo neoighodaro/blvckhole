@@ -2,16 +2,19 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/spf13/cobra"
 )
 
 var shellCmd = &cobra.Command{
-	Use:   "shell",
-	Short: "Open a shell in the sandbox",
+	Use:     "shell",
+	Aliases: []string{"ssh"},
+	Short:   "Open a shell in the sandbox",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := ensureSbxInstalled(); err != nil {
 			return err
@@ -33,7 +36,13 @@ var shellCmd = &cobra.Command{
 			}
 		}
 
-		if err := sandbox.Exec(cfg.Name, true, "bash"); err != nil {
+		shellArgs := []string{"zsh"}
+		if cfg.Shell.Directory != "" {
+			quoted := "'" + strings.ReplaceAll(cfg.Shell.Directory, "'", "'\\''") + "'"
+			shellArgs = []string{"zsh", "-c", fmt.Sprintf("cd %s && exec zsh", quoted)}
+		}
+
+		if err := sandbox.Exec(cfg.Name, true, shellArgs...); err != nil {
 			var exitErr *exec.ExitError
 			if ok := errors.As(err, &exitErr); ok {
 				os.Exit(exitErr.ExitCode())
