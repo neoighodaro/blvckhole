@@ -16,6 +16,10 @@ var starterConfig = `# blvckhole sandbox configuration
 name: %s
 agent: claude-code
 
+# Copy the project to this directory inside the sandbox after creation.
+# When unset, the project stays at the mirrored host path.
+# workspace: /workspace
+
 # Custom template image (skips Dockerfile generation when set).
 # When set, 'packages' and 'runtimes' are ignored — install them in your Dockerfile.
 # template: docker.io/my-org/custom-template:v1
@@ -28,7 +32,8 @@ packages: []
 
 # Language runtimes
 runtimes: {}
-  # node: "22"
+  # node: "24"
+  # pnpm: "11"
   # bun: "latest"
   # python: "3.12"
   # go: "1.23"
@@ -48,6 +53,22 @@ env: {}
 env_file: []
   # - .env
   # - .env.sandbox
+
+# Shell configuration (ZSH is the default shell)
+shell:
+  # Default working directory when opening a shell
+  # directory: /home/agent/project/src
+
+  # Custom aliases (added alongside built-in aliases)
+  aliases: {}
+    # g: "git"
+    # dc: "docker compose"
+    # clr: "clear"
+
+# Commands to run inside the sandbox after creation (in order)
+startup: []
+  # - "pnpm install"
+  # - "pnpm build"
 
 # Network whitelist (only these domains are reachable from the sandbox)
 network: []

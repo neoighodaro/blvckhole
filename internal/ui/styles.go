@@ -11,9 +11,12 @@ var (
 	White  = lipgloss.Color("#F9FAFB")
 	Dim    = lipgloss.Color("#4B5563")
 
+	Yellow = lipgloss.Color("#FBBF24")
+
 	Bold    = lipgloss.NewStyle().Bold(true)
 	Success = lipgloss.NewStyle().Foreground(Green)
 	Error   = lipgloss.NewStyle().Foreground(Red)
+	Warn    = lipgloss.NewStyle().Foreground(Yellow)
 	Info    = lipgloss.NewStyle().Foreground(Gray)
 	Accent  = lipgloss.NewStyle().Foreground(Purple)
 )

@@ -93,6 +93,13 @@ func runStart(cfg *config.Config) error {
 		return fmt.Errorf("failed to create sandbox: %w", err)
 	}
 
+	if cfg.Workspace != "" {
+		fmt.Println(ui.Accent.Render("Linking project to " + cfg.Workspace + "..."))
+		if err := sandbox.LinkWorkspace(cfg.Name, cfg.ProjectDir, cfg.Workspace); err != nil {
+			return fmt.Errorf("failed to link project to workspace: %w", err)
+		}
+	}
+
 	if len(cfg.Network) > 0 {
 		fmt.Println(ui.Accent.Render("Applying network whitelist..."))
 		if err := sandbox.AllowNetwork(cfg.Name, cfg.Network); err != nil {
@@ -104,6 +111,20 @@ func runStart(cfg *config.Config) error {
 		fmt.Println(ui.Accent.Render("Publishing port " + port + "..."))
 		if err := sandbox.PublishPort(cfg.Name, port); err != nil {
 			return fmt.Errorf("failed to publish port %s: %w", port, err)
+		}
+	}
+
+	if len(cfg.Startup) > 0 {
+		workDir := cfg.ProjectDir
+		if cfg.Workspace != "" {
+			workDir = cfg.Workspace
+		}
+		for _, cmd := range cfg.Startup {
+			fmt.Println(ui.Accent.Render("Running: " + cmd))
+			script := fmt.Sprintf("cd %s && %s", workDir, cmd)
+			if err := sandbox.Exec(cfg.Name, false, "bash", "-c", script); err != nil {
+				return fmt.Errorf("startup command failed (%s): %w", cmd, err)
+			}
 		}
 	}
 

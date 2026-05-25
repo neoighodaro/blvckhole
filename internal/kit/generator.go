@@ -76,11 +76,32 @@ func buildSpec(cfg *config.Config) string {
 }
 
 func writeKitFiles(cfg *config.Config, kitDir string) error {
-	claudeDir := filepath.Join(kitDir, "files", "home", ".claude")
+	homeDir := filepath.Join(kitDir, "files", "home")
+	claudeDir := filepath.Join(homeDir, ".claude")
 	themeDir := filepath.Join(claudeDir, "themes")
 
 	if err := os.MkdirAll(themeDir, 0755); err != nil {
 		return fmt.Errorf("failed to create theme directory: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(homeDir, ".bashrc"), embedded.BashrcSh, 0644); err != nil {
+		return fmt.Errorf("failed to write .bashrc: %w", err)
+	}
+	aliasContent := make([]byte, len(embedded.BashAliasesSh))
+	copy(aliasContent, embedded.BashAliasesSh)
+	if len(cfg.Shell.Aliases) > 0 {
+		keys := make([]string, 0, len(cfg.Shell.Aliases))
+		for k := range cfg.Shell.Aliases {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		aliasContent = append(aliasContent, '\n')
+		for _, k := range keys {
+			aliasContent = append(aliasContent, []byte(fmt.Sprintf("alias %s=%q\n", k, cfg.Shell.Aliases[k]))...)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(homeDir, ".bash_aliases"), aliasContent, 0644); err != nil {
+		return fmt.Errorf("failed to write .bash_aliases: %w", err)
 	}
 
 	themeData := embedded.ThemeJSON

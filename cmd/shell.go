@@ -1,17 +1,20 @@
 package cmd
 
 import (
-	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+	"syscall"
 
 	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/spf13/cobra"
 )
 
 var shellCmd = &cobra.Command{
-	Use:   "shell",
-	Short: "Open a shell in the sandbox",
+	Use:     "shell",
+	Aliases: []string{"ssh"},
+	Short:   "Open a shell in the sandbox",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := ensureSbxInstalled(); err != nil {
 			return err
@@ -33,15 +36,26 @@ var shellCmd = &cobra.Command{
 			}
 		}
 
-		if err := sandbox.Exec(cfg.Name, true, "bash"); err != nil {
-			var exitErr *exec.ExitError
-			if ok := errors.As(err, &exitErr); ok {
-				os.Exit(exitErr.ExitCode())
-			}
-			return err
+		shellDir := cfg.Shell.Directory
+		if shellDir == "" {
+			shellDir = cfg.Workspace
 		}
 
-		return nil
+		shellArgs := []string{"bash"}
+		if shellDir != "" {
+			quoted := "'" + strings.ReplaceAll(shellDir, "'", "'\\''") + "'"
+			shellArgs = []string{"bash", "-c", fmt.Sprintf("cd %s && exec bash", quoted)}
+		}
+
+		sbxPath, err := exec.LookPath("sbx")
+		if err != nil {
+			return fmt.Errorf("sbx not found in PATH: %w", err)
+		}
+
+		execArgs := []string{"sbx", "exec", "-it", cfg.Name, "--"}
+		execArgs = append(execArgs, shellArgs...)
+
+		return syscall.Exec(sbxPath, execArgs, os.Environ())
 	},
 }
 

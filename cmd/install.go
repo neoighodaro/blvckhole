@@ -11,6 +11,7 @@ import (
 )
 
 var symlinkFlag bool
+var pathFlag string
 
 var installCmd = &cobra.Command{
 	Use:   "install",
@@ -25,12 +26,16 @@ var installCmd = &cobra.Command{
 			return fmt.Errorf("cannot resolve executable path: %w", err)
 		}
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("cannot determine home directory: %w", err)
+		var binDir string
+		if pathFlag != "" {
+			binDir = pathFlag
+		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("cannot determine home directory: %w", err)
+			}
+			binDir = filepath.Join(home, "Developer", "bin")
 		}
-
-		binDir := filepath.Join(home, "Developer", "bin")
 		dest := filepath.Join(binDir, "blvckhole")
 
 		if err := os.MkdirAll(binDir, 0755); err != nil {
@@ -70,5 +75,6 @@ var installCmd = &cobra.Command{
 
 func init() {
 	installCmd.Flags().BoolVar(&symlinkFlag, "symlink", false, "Symlink to the current binary instead of copying")
+	installCmd.Flags().StringVar(&pathFlag, "path", "", "Install directory (default: ~/Developer/bin/)")
 	rootCmd.AddCommand(installCmd)
 }

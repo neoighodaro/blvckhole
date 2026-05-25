@@ -27,6 +27,7 @@ var validAgents = map[string]bool{
 
 var validRuntimes = map[string]bool{
 	"node":   true,
+	"pnpm":   true,
 	"bun":    true,
 	"python": true,
 	"go":     true,
@@ -41,6 +42,11 @@ type ClaudePlugins struct {
 	Install      []string `yaml:"install"`
 }
 
+type ShellConfig struct {
+	Directory string            `yaml:"directory"`
+	Aliases   map[string]string `yaml:"aliases"`
+}
+
 type ClaudeConfig struct {
 	Theme    string                 `yaml:"theme"`
 	Plugins  ClaudePlugins          `yaml:"plugins"`
@@ -48,17 +54,20 @@ type ClaudeConfig struct {
 }
 
 type Config struct {
-	Name     string            `yaml:"name"`
-	Agent    string            `yaml:"agent"`
-	Template string            `yaml:"template"`
-	Packages []string          `yaml:"packages"`
-	Runtimes map[string]string `yaml:"runtimes"`
-	Ports    []string          `yaml:"ports"`
-	Env      map[string]string `yaml:"env"`
-	EnvFile  []string          `yaml:"env_file"`
-	Network  []string          `yaml:"network"`
-	Claude   ClaudeConfig      `yaml:"claude"`
-	Memory   string            `yaml:"memory"`
+	Name      string            `yaml:"name"`
+	Agent     string            `yaml:"agent"`
+	Template  string            `yaml:"template"`
+	Workspace string            `yaml:"workspace"`
+	Packages  []string          `yaml:"packages"`
+	Runtimes  map[string]string `yaml:"runtimes"`
+	Ports     []string          `yaml:"ports"`
+	Env       map[string]string `yaml:"env"`
+	EnvFile   []string          `yaml:"env_file"`
+	Network   []string          `yaml:"network"`
+	Startup   []string          `yaml:"startup"`
+	Shell     ShellConfig       `yaml:"shell"`
+	Claude    ClaudeConfig      `yaml:"claude"`
+	Memory    string            `yaml:"memory"`
 
 	MergedEnv  map[string]string `yaml:"-"`
 	ProjectDir string            `yaml:"-"`
@@ -155,6 +164,12 @@ func (c *Config) Validate() error {
 				runtimes = append(runtimes, r)
 			}
 			return fmt.Errorf("unsupported runtime %q: must be one of: %s", name, strings.Join(runtimes, ", "))
+		}
+	}
+
+	if _, hasPnpm := c.Runtimes["pnpm"]; hasPnpm {
+		if _, hasNode := c.Runtimes["node"]; !hasNode {
+			return fmt.Errorf("pnpm requires the node runtime: add 'node' to your runtimes")
 		}
 	}
 

@@ -20,8 +20,11 @@ func TestRender_MinimalConfig(t *testing.T) {
 	if !strings.Contains(out, "FROM docker/sandbox-templates:claude-code-minimal") {
 		t.Error("expected base image in output")
 	}
-	if strings.Contains(out, "apt-get") {
-		t.Error("should not have apt-get with no packages")
+	if strings.Contains(out, "zsh") {
+		t.Error("should not have zsh packages in minimal config")
+	}
+	if strings.Contains(out, "ripgrep") {
+		t.Error("should not have user packages with no packages configured")
 	}
 }
 
