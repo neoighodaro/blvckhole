@@ -127,7 +127,15 @@ func Status(name string) (*SandboxInfo, error) {
 
 	var sandboxes []SandboxInfo
 	if err := json.Unmarshal(output, &sandboxes); err != nil {
-		return nil, fmt.Errorf("failed to parse sbx ls output: %w", err)
+		var wrapped map[string]json.RawMessage
+		if err2 := json.Unmarshal(output, &wrapped); err2 != nil {
+			return nil, fmt.Errorf("failed to parse sbx ls output: %w", err)
+		}
+		for _, v := range wrapped {
+			if err2 := json.Unmarshal(v, &sandboxes); err2 == nil {
+				break
+			}
+		}
 	}
 
 	for _, s := range sandboxes {

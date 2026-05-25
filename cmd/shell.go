@@ -13,8 +13,6 @@ var shellCmd = &cobra.Command{
 	Use:   "shell",
 	Short: "Open a shell in the sandbox",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cmd.SilenceUsage = true
-
 		if err := ensureSbxInstalled(); err != nil {
 			return err
 		}

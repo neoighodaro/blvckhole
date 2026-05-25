@@ -10,9 +10,10 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "blvckhole",
-	Short: "Docker Sandbox wrapper with declarative YAML config",
-	Long:  ui.RenderLogo() + "\n  A CLI tool to create and manage Docker Sandboxes from a YAML config file.",
+	Use:           "blvckhole",
+	Short:         "Docker Sandbox wrapper with declarative YAML config",
+	Long:          ui.RenderLogo() + "\n  A CLI tool to create and manage Docker Sandboxes from a YAML config file.",
+	SilenceUsage:  true,
 }
 
 func Execute() error {

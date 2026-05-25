@@ -53,37 +53,49 @@ var agentCmd = &cobra.Command{
 }
 
 func mergeAgentSettings(cfg *config.Config) error {
-	script := `
+	script := fmt.Sprintf(`
+set -e
+SETTINGS="$HOME/.claude/settings.json"
+[ -f "$SETTINGS" ] || exit 0
+
 export SLPATH="$(ls -d ~/.claude/plugins/cache/claude-dashboard/claude-dashboard/*/dist/index.js 2>/dev/null | sort -V | tail -1)"
-if [ -f ~/.claude/settings.json ]; then
-  node -e "
-    const fs=require('fs'),h=process.env.HOME,p=h+'/.claude/settings.json';
-    const s=JSON.parse(fs.readFileSync(p,'utf8'));
-    const tmpl=h+'/.claude/settings.sandbox.json';
-    if(fs.existsSync(tmpl)){
-      const custom=JSON.parse(fs.readFileSync(tmpl,'utf8'));
-      Object.assign(s,custom);
-    }
-    if(process.env.SLPATH){
-      s.statusLine={type:'command',command:'node '+process.env.SLPATH};
-    }
-    if(!s.enabledPlugins) s.enabledPlugins={};
-`
 
-	for _, plugin := range cfg.Claude.Plugins.Install {
-		script += fmt.Sprintf("    s.enabledPlugins['%s']=true;\n", plugin)
-	}
+SANDBOX_SETTINGS="$HOME/.claude/settings.sandbox.json"
+[ -f "$HOME/.claude/themes/sandbox.json" ] && export HAS_THEME=1 || export HAS_THEME=0
 
-	script += `
-    const themeFile=h+'/.claude/themes/sandbox.json';
-    if(fs.existsSync(themeFile)){s.theme='custom:sandbox';s.themeId='custom:sandbox';}
-    fs.writeFileSync(p,JSON.stringify(s,null,2));
-  " 2>/dev/null
+if [ -f "$SANDBOX_SETTINGS" ]; then
+  jq -s '%s' "$SETTINGS" "$SANDBOX_SETTINGS" > "$SETTINGS.tmp"
+else
+  jq '%s' "$SETTINGS" > "$SETTINGS.tmp"
 fi
-`
+mv "$SETTINGS.tmp" "$SETTINGS"
+`, jqMergeFilter(cfg), jqNoMergeFilter(cfg))
 
 	_, err := sandbox.ExecSilent(cfg.Name, "bash", "-c", script)
 	return err
+}
+
+func jqSettingsFilter(cfg *config.Config) string {
+	f := ""
+	f += `if env.SLPATH != "" then .statusLine = {type: "command", command: ("node " + env.SLPATH)} else . end`
+
+	if len(cfg.Claude.Plugins.Install) > 0 {
+		f += ` | .enabledPlugins = (.enabledPlugins // {})`
+		for _, plugin := range cfg.Claude.Plugins.Install {
+			f += fmt.Sprintf(` | .enabledPlugins["%s"] = true`, plugin)
+		}
+	}
+
+	f += ` | if env.HAS_THEME == "1" then .theme = "custom:sandbox" | .themeId = "custom:sandbox" else . end`
+	return f
+}
+
+func jqMergeFilter(cfg *config.Config) string {
+	return ".[0] * .[1] | " + jqSettingsFilter(cfg)
+}
+
+func jqNoMergeFilter(cfg *config.Config) string {
+	return jqSettingsFilter(cfg)
 }
 
 func init() {
