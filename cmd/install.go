@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var symlinkFlag bool
+
 var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install blvckhole to ~/Developer/bin/",
@@ -35,6 +37,16 @@ var installCmd = &cobra.Command{
 			return fmt.Errorf("failed to create %s: %w", binDir, err)
 		}
 
+		os.Remove(dest)
+
+		if symlinkFlag {
+			if err := os.Symlink(self, dest); err != nil {
+				return fmt.Errorf("failed to symlink: %w", err)
+			}
+			fmt.Println(ui.Success.Render("Symlinked blvckhole to " + dest + " -> " + self))
+			return nil
+		}
+
 		src, err := os.Open(self)
 		if err != nil {
 			return fmt.Errorf("cannot read binary: %w", err)
@@ -57,5 +69,6 @@ var installCmd = &cobra.Command{
 }
 
 func init() {
+	installCmd.Flags().BoolVar(&symlinkFlag, "symlink", false, "Symlink to the current binary instead of copying")
 	rootCmd.AddCommand(installCmd)
 }
