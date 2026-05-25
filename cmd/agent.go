@@ -37,7 +37,7 @@ var agentCmd = &cobra.Command{
 			}
 		}
 
-		if !sandbox.IsRunning(cfg.Name) {
+		if !sandbox.Exists(cfg.Name) {
 			if err := runStart(cfg); err != nil {
 				return err
 			}
