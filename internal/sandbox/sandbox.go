@@ -95,6 +95,15 @@ func ExecSilent(name string, command ...string) (string, error) {
 	return string(output), err
 }
 
+func LinkWorkspace(name, source, dest string) error {
+	script := fmt.Sprintf("mkdir -p \"$(dirname '%s')\" && ln -sfn '%s' '%s'",
+		dest, source, dest)
+	cmd := exec.Command("sbx", "exec", "-u", "root", name, "--", "bash", "-c", script)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func AllowNetwork(name string, domains []string) error {
 	if len(domains) == 0 {
 		return nil

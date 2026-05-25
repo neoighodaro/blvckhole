@@ -3,9 +3,9 @@ FROM docker/sandbox-templates:claude-code-minimal
 USER root
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends zsh zsh-autosuggestions zsh-syntax-highlighting{{ if .Packages }} {{ join .Packages " " }}{{ end }} \
+ && apt-get install -y --no-install-recommends locales{{ if .Packages }} {{ join .Packages " " }}{{ end }} \
  && rm -rf /var/lib/apt/lists/* \
- && sed -i '/^agent:/ s|:[^:]*$|:/usr/bin/zsh|' /etc/passwd
+ && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && locale-gen
 {{- range .RootBlocks }}
 
 {{ . }}

@@ -54,18 +54,19 @@ type ClaudeConfig struct {
 }
 
 type Config struct {
-	Name     string            `yaml:"name"`
-	Agent    string            `yaml:"agent"`
-	Template string            `yaml:"template"`
-	Packages []string          `yaml:"packages"`
-	Runtimes map[string]string `yaml:"runtimes"`
-	Ports    []string          `yaml:"ports"`
-	Env      map[string]string `yaml:"env"`
-	EnvFile  []string          `yaml:"env_file"`
-	Network  []string          `yaml:"network"`
-	Shell    ShellConfig       `yaml:"shell"`
-	Claude   ClaudeConfig      `yaml:"claude"`
-	Memory   string            `yaml:"memory"`
+	Name      string            `yaml:"name"`
+	Agent     string            `yaml:"agent"`
+	Template  string            `yaml:"template"`
+	Workspace string            `yaml:"workspace"`
+	Packages  []string          `yaml:"packages"`
+	Runtimes  map[string]string `yaml:"runtimes"`
+	Ports     []string          `yaml:"ports"`
+	Env       map[string]string `yaml:"env"`
+	EnvFile   []string          `yaml:"env_file"`
+	Network   []string          `yaml:"network"`
+	Shell     ShellConfig       `yaml:"shell"`
+	Claude    ClaudeConfig      `yaml:"claude"`
+	Memory    string            `yaml:"memory"`
 
 	MergedEnv  map[string]string `yaml:"-"`
 	ProjectDir string            `yaml:"-"`

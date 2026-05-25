@@ -16,6 +16,10 @@ var starterConfig = `# blvckhole sandbox configuration
 name: %s
 agent: claude-code
 
+# Copy the project to this directory inside the sandbox after creation.
+# When unset, the project stays at the mirrored host path.
+# workspace: /workspace
+
 # Custom template image (skips Dockerfile generation when set).
 # When set, 'packages' and 'runtimes' are ignored — install them in your Dockerfile.
 # template: docker.io/my-org/custom-template:v1

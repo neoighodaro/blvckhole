@@ -84,11 +84,11 @@ func writeKitFiles(cfg *config.Config, kitDir string) error {
 		return fmt.Errorf("failed to create theme directory: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(homeDir, ".zshrc"), embedded.ZshrcSh, 0644); err != nil {
-		return fmt.Errorf("failed to write .zshrc: %w", err)
+	if err := os.WriteFile(filepath.Join(homeDir, ".bashrc"), embedded.BashrcSh, 0644); err != nil {
+		return fmt.Errorf("failed to write .bashrc: %w", err)
 	}
-	aliasContent := make([]byte, len(embedded.ZshrcAliasesSh))
-	copy(aliasContent, embedded.ZshrcAliasesSh)
+	aliasContent := make([]byte, len(embedded.BashAliasesSh))
+	copy(aliasContent, embedded.BashAliasesSh)
 	if len(cfg.Shell.Aliases) > 0 {
 		keys := make([]string, 0, len(cfg.Shell.Aliases))
 		for k := range cfg.Shell.Aliases {
@@ -100,8 +100,8 @@ func writeKitFiles(cfg *config.Config, kitDir string) error {
 			aliasContent = append(aliasContent, []byte(fmt.Sprintf("alias %s=%q\n", k, cfg.Shell.Aliases[k]))...)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(homeDir, ".zshrc_aliases"), aliasContent, 0644); err != nil {
-		return fmt.Errorf("failed to write .zshrc_aliases: %w", err)
+	if err := os.WriteFile(filepath.Join(homeDir, ".bash_aliases"), aliasContent, 0644); err != nil {
+		return fmt.Errorf("failed to write .bash_aliases: %w", err)
 	}
 
 	themeData := embedded.ThemeJSON

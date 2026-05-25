@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/spf13/cobra"
@@ -36,21 +36,26 @@ var shellCmd = &cobra.Command{
 			}
 		}
 
-		shellArgs := []string{"zsh"}
-		if cfg.Shell.Directory != "" {
-			quoted := "'" + strings.ReplaceAll(cfg.Shell.Directory, "'", "'\\''") + "'"
-			shellArgs = []string{"zsh", "-c", fmt.Sprintf("cd %s && exec zsh", quoted)}
+		shellDir := cfg.Shell.Directory
+		if shellDir == "" {
+			shellDir = cfg.Workspace
 		}
 
-		if err := sandbox.Exec(cfg.Name, true, shellArgs...); err != nil {
-			var exitErr *exec.ExitError
-			if ok := errors.As(err, &exitErr); ok {
-				os.Exit(exitErr.ExitCode())
-			}
-			return err
+		shellArgs := []string{"bash"}
+		if shellDir != "" {
+			quoted := "'" + strings.ReplaceAll(shellDir, "'", "'\\''") + "'"
+			shellArgs = []string{"bash", "-c", fmt.Sprintf("cd %s && exec bash", quoted)}
 		}
 
-		return nil
+		sbxPath, err := exec.LookPath("sbx")
+		if err != nil {
+			return fmt.Errorf("sbx not found in PATH: %w", err)
+		}
+
+		execArgs := []string{"sbx", "exec", "-it", cfg.Name, "--"}
+		execArgs = append(execArgs, shellArgs...)
+
+		return syscall.Exec(sbxPath, execArgs, os.Environ())
 	},
 }
 

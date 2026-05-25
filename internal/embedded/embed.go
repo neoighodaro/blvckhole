@@ -16,8 +16,8 @@ var DashboardJSON []byte
 //go:embed Dockerfile.tmpl
 var DockerfileTmpl string
 
-//go:embed zshrc.sh
-var ZshrcSh []byte
+//go:embed bashrc.sh
+var BashrcSh []byte
 
-//go:embed zshrc_aliases.sh
-var ZshrcAliasesSh []byte
+//go:embed bash_aliases.sh
+var BashAliasesSh []byte
