@@ -9,24 +9,19 @@ import (
 )
 
 type SandboxInfo struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Agent  string `json:"agent"`
-	Ports  string `json:"ports"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Status     string   `json:"status"`
+	Agent      string   `json:"agent"`
+	Workspaces []string `json:"workspaces"`
 }
 
 func IsRunning(name string) bool {
-	cmd := exec.Command("sbx", "ls", "--quiet")
-	output, err := cmd.Output()
-	if err != nil {
+	info, err := Status(name)
+	if err != nil || info == nil {
 		return false
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if strings.TrimSpace(line) == name {
-			return true
-		}
-	}
-	return false
+	return info.Status == "running"
 }
 
 func Exists(name string) bool {
