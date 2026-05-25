@@ -7,17 +7,15 @@
   ╚═════╝ ╚══════╝ ╚═══╝   ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝
 ```
 
-One YAML file. One command. A fully configured [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) with your runtimes, packages, and AI agent ready to go.
+Declarative [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) manager. One YAML config, one command — sandbox is up with your runtimes, packages, and AI agent.
+
+Sandboxes isolate your development environment from your host. Compromised dependencies can't touch your filesystem or phone home unless you explicitly allowlist the domain. Good default against supply chain attacks.
 
 ```bash
-blvckhole init       # drop a config in your project
+blvckhole init       # scaffold config
 blvckhole start      # build image, create sandbox
-blvckhole agent      # launch your AI agent inside it
+blvckhole agent      # launch AI agent inside
 ```
-
-You stop hand-writing Dockerfiles and kit specs. blvckhole reads a YAML config, generates a Dockerfile, builds it, wires up the sandbox, and drops you (or your agent) into a ZSH shell with syntax highlighting, autosuggestions, and aliases already configured.
-
-Supports Claude Code, Codex, Copilot, Cursor, Gemini, Kiro, and others. Supports Node.js, pnpm, Bun, Python, Go, PHP, and Rust. Network is deny-all by default — you allowlist what you need.
 
 ## Install
 
@@ -50,7 +48,7 @@ blvckhole status              # show sandbox state, ports, runtimes
 
 ## Config
 
-`blvckhole init` creates `.config/blvckhole/blvckhole.yaml`. Also found at `blvckhole.yaml` in the project root.
+`blvckhole init` creates `.config/blvckhole/blvckhole.yaml`. Also discovered at `blvckhole.yaml` in the project root.
 
 ```yaml
 name: my-project          # default: directory name
@@ -90,7 +88,7 @@ shell:
     g: "git"
     dc: "docker compose"
 
-network:                   # deny-all unless listed here
+network:                   # allowlist — when set, only these domains are reachable
   - "*.npmjs.org"
   - "registry.yarnpkg.com"
   - "api.github.com"
@@ -109,7 +107,64 @@ memory: |                  # injected into the agent's CLAUDE.md
   Project-specific instructions here.
 ```
 
-## ZSH
+## Shell
 
-Every sandbox gets ZSH with zsh-autosuggestions, zsh-syntax-highlighting, a colored prompt with git branch, and aliases for `bat`, `eza`, `lazygit`, and `please` (sudo last command) when those tools are installed. Add your own via `shell.aliases`.
+Sandboxes use bash with a colored prompt, git branch display, and persistent history. Aliases for `bat`, `eza`, `lazygit`, and `please` (sudo last command) are available when those tools are installed. Add your own via `shell.aliases`.
 
+## Agents
+
+Supported: `claude-code`, `codex`, `copilot`, `cursor`, `docker-agent`, `droid`, `gemini`, `kiro`, `opencode`, `shell`
+
+## Runtimes
+
+| Runtime | Version format | Notes |
+|---------|---------------|-------|
+| `node` | `"24"` or `"24.16.0"` | Major version uses NodeSource, exact downloads from nodejs.org |
+| `pnpm` | `"11.1.3"` | Requires `node` |
+| `bun` | `"latest"` or `"1.2.0"` | |
+| `python` | `"3.12"` | |
+| `go` | `"1.23"` | |
+| `php` | `"8.4"` | |
+| `rust` | `"stable"` or `"1.80"` | |
+
+## Contributing
+
+```bash
+git clone https://github.com/neoighodaro/blvckhole.git
+cd blvckhole
+go build ./...
+go test ./...
+```
+
+### Structure
+
+```
+cmd/                     CLI commands (cobra)
+internal/
+  config/                YAML config parsing and validation
+  embedded/              Embedded assets (Dockerfile template, bashrc, theme)
+  envfile/               .env file parser
+  kit/                   Kit generator (spec.yaml + files for sbx)
+  runtime/               Runtime installers (node, pnpm, bun, python, go, php, rust)
+  sandbox/               Wrapper around the sbx CLI
+  template/              Dockerfile template renderer and builder
+  ui/                    Terminal styling (lipgloss)
+```
+
+### Adding a Runtime
+
+1. Create `internal/runtime/<name>.go` implementing:
+
+```go
+type Runtime interface {
+    Name() string
+    Validate(version string) error
+    RootBlock(version string) string   // Dockerfile commands as root
+    AgentBlock(version string) string  // Dockerfile commands as agent user
+    EnvBlock(version string) string    // ENV directives
+}
+```
+
+2. Register in `internal/runtime/runtime.go`
+3. Add to `validRuntimes` in `internal/config/config.go`
+4. Add a commented example in the starter config in `cmd/init.go`
