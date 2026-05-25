@@ -19,7 +19,11 @@ blvckhole agent      # launch AI agent inside
 
 ## Install
 
-Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) with [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) (`sbx` CLI). Building from source needs Go 1.26+.
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) with [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) (`sbx` CLI).
+
+Download a pre-built binary from [GitHub Releases](https://github.com/neoighodaro/blvckhole/releases), extract it, and put it somewhere in your `PATH`.
+
+Or build from source (needs Go 1.26+):
 
 ```bash
 git clone https://github.com/neoighodaro/blvckhole.git
@@ -30,8 +34,6 @@ go build -o blvckhole .
 ./blvckhole install --path=/usr/local/bin
 ./blvckhole install --symlink           # picks up rebuilds automatically
 ```
-
-Make sure the install directory is in your `PATH`.
 
 ## Usage
 
