@@ -64,6 +64,7 @@ type Config struct {
 	Env       map[string]string `yaml:"env"`
 	EnvFile   []string          `yaml:"env_file"`
 	Network   []string          `yaml:"network"`
+	Startup   []string          `yaml:"startup"`
 	Shell     ShellConfig       `yaml:"shell"`
 	Claude    ClaudeConfig      `yaml:"claude"`
 	Memory    string            `yaml:"memory"`

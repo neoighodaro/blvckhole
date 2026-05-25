@@ -114,6 +114,20 @@ func runStart(cfg *config.Config) error {
 		}
 	}
 
+	if len(cfg.Startup) > 0 {
+		workDir := cfg.ProjectDir
+		if cfg.Workspace != "" {
+			workDir = cfg.Workspace
+		}
+		for _, cmd := range cfg.Startup {
+			fmt.Println(ui.Accent.Render("Running: " + cmd))
+			script := fmt.Sprintf("cd %s && %s", workDir, cmd)
+			if err := sandbox.Exec(cfg.Name, false, "bash", "-c", script); err != nil {
+				return fmt.Errorf("startup command failed (%s): %w", cmd, err)
+			}
+		}
+	}
+
 	fmt.Println(ui.Success.Render("Sandbox started (" + cfg.Name + ")"))
 	fmt.Println(ui.Info.Render("  Run 'blvckhole agent' to start the AI agent"))
 	fmt.Println(ui.Info.Render("  Run 'blvckhole shell' to open a shell"))

@@ -65,6 +65,11 @@ shell:
     # dc: "docker compose"
     # clr: "clear"
 
+# Commands to run inside the sandbox after creation (in order)
+startup: []
+  # - "pnpm install"
+  # - "pnpm build"
+
 # Network whitelist (only these domains are reachable from the sandbox)
 network: []
   # - "*.npmjs.org"

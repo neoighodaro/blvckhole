@@ -11,6 +11,7 @@ __git_branch() {
 
 PS1='\n\[\033[38;5;240m\]╭\[\033[0m\] \[\033[38;5;208m\]\w\[\033[0m\]$(__git_branch)\n\[\033[38;5;240m\]╰\[\033[0m\] \[\033[32m\]❯\[\033[0m\] '
 
+export TERM=${TERM:-xterm-256color}
 export LANG=${LANG:-en_US.UTF-8}
 export LC_ALL=${LC_ALL:-$LANG}
 

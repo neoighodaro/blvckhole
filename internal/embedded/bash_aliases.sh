@@ -1,7 +1,7 @@
 alias nano="vi"
 alias please='sudo $(fc -ln -1)'
-alias refresh='source ~/.zshrc; echo "Reloaded .zshrc."'
-alias reload='source ~/.zshrc; echo "Reloaded .zshrc."'
+alias refresh='source ~/.bashrc; echo "Reloaded .bashrc."'
+alias reload='source ~/.bashrc; echo "Reloaded .bashrc."'
 
 if type batcat &>/dev/null; then
   alias cat="batcat --paging=never"
