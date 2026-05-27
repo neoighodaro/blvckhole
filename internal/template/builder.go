@@ -41,6 +41,11 @@ func Render(cfg *config.Config) (string, error) {
 		if r == nil {
 			return "", fmt.Errorf("unknown runtime: %s", name)
 		}
+		if name == "php" {
+			if php, ok := r.(*runtime.PhpRuntime); ok {
+				php.Extensions = cfg.Php.Extensions
+			}
+		}
 		if block := r.RootBlock(version); block != "" {
 			data.RootBlocks = append(data.RootBlocks, block)
 		}

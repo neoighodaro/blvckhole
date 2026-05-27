@@ -53,6 +53,10 @@ type ClaudeConfig struct {
 	Settings map[string]interface{} `yaml:"settings"`
 }
 
+type PhpConfig struct {
+	Extensions []string `yaml:"extensions"`
+}
+
 type ZellijConfig struct {
 	DisplayName string `yaml:"display_name"`
 }
@@ -71,6 +75,7 @@ type Config struct {
 	Startup   []string          `yaml:"startup"`
 	Shell     ShellConfig       `yaml:"shell"`
 	Claude    ClaudeConfig      `yaml:"claude"`
+	Php       PhpConfig         `yaml:"php"`
 	Zellij    ZellijConfig      `yaml:"zellij"`
 	Memory    string            `yaml:"memory"`
 

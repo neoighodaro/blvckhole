@@ -75,6 +75,11 @@ runtimes:
   # php: "8.4"
   # rust: "stable"
 
+php:                       # additional extensions (added to defaults)
+  extensions:
+    - sqlite3
+    - imagick
+
 ports:
   - 3000
   - "8080:80"

@@ -44,6 +44,12 @@ runtimes: {}
   # php: "8.4"
   # rust: "stable"
 
+# Additional PHP extensions (added to defaults: mbstring, xml, curl, pgsql, redis, zip, bcmath, intl, gd, readline)
+# php:
+#   extensions:
+#     - sqlite3
+#     - imagick
+
 # Ports exposed from sandbox to host
 ports: []
   # - 3000

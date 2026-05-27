@@ -10,7 +10,14 @@ var supportedPhpVersions = map[string]bool{
 	"8.5": true,
 }
 
-type PhpRuntime struct{}
+var defaultPhpExtensions = []string{
+	"mbstring", "xml", "curl", "pgsql", "redis",
+	"zip", "bcmath", "intl", "gd", "readline",
+}
+
+type PhpRuntime struct {
+	Extensions []string
+}
 
 func (r *PhpRuntime) Name() string { return "php" }
 
@@ -26,6 +33,25 @@ func (r *PhpRuntime) Validate(version string) error {
 		return fmt.Errorf("unsupported php version %q: must be one of: %s", version, strings.Join(versions, ", "))
 	}
 	return nil
+}
+
+func (r *PhpRuntime) extensions() []string {
+	if len(r.Extensions) == 0 {
+		return defaultPhpExtensions
+	}
+
+	seen := make(map[string]bool, len(defaultPhpExtensions)+len(r.Extensions))
+	result := make([]string, 0, len(defaultPhpExtensions)+len(r.Extensions))
+	for _, ext := range defaultPhpExtensions {
+		seen[ext] = true
+		result = append(result, ext)
+	}
+	for _, ext := range r.Extensions {
+		if !seen[ext] {
+			result = append(result, ext)
+		}
+	}
+	return result
 }
 
 func (r *PhpRuntime) RootBlock(version string) string {
@@ -54,16 +80,15 @@ func (r *PhpRuntime) RootBlock(version string) string {
 `)
 	}
 
-	b.WriteString(fmt.Sprintf(`RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      php%s-cli php%s-mbstring php%s-xml php%s-curl \
-      php%s-pgsql php%s-redis php%s-zip php%s-bcmath \
-      php%s-intl php%s-gd php%s-readline \
- && rm -rf /var/lib/apt/lists/*
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer`,
-		version, version, version, version,
-		version, version, version, version,
-		version, version, version))
+	exts := r.extensions()
+	pkgs := make([]string, 0, len(exts)+1)
+	pkgs = append(pkgs, fmt.Sprintf("php%s-cli", version))
+	for _, ext := range exts {
+		pkgs = append(pkgs, fmt.Sprintf("php%s-%s", version, ext))
+	}
+
+	b.WriteString(fmt.Sprintf("RUN apt-get update \\\n && apt-get install -y --no-install-recommends \\\n      %s \\\n && rm -rf /var/lib/apt/lists/*\nCOPY --from=composer:latest /usr/bin/composer /usr/bin/composer",
+		strings.Join(pkgs, " ")))
 
 	return b.String()
 }
