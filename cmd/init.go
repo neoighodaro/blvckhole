@@ -16,6 +16,10 @@ var starterConfig = `# blvckhole sandbox configuration
 name: %s
 agent: claude-code
 
+# Zellij terminal multiplexer integration
+# zellij:
+#   display_name: My Project
+
 # Copy the project to this directory inside the sandbox after creation.
 # When unset, the project stays at the mirrored host path.
 # workspace: /workspace

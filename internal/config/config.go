@@ -53,6 +53,10 @@ type ClaudeConfig struct {
 	Settings map[string]interface{} `yaml:"settings"`
 }
 
+type ZellijConfig struct {
+	DisplayName string `yaml:"display_name"`
+}
+
 type Config struct {
 	Name      string            `yaml:"name"`
 	Agent     string            `yaml:"agent"`
@@ -67,6 +71,7 @@ type Config struct {
 	Startup   []string          `yaml:"startup"`
 	Shell     ShellConfig       `yaml:"shell"`
 	Claude    ClaudeConfig      `yaml:"claude"`
+	Zellij    ZellijConfig      `yaml:"zellij"`
 	Memory    string            `yaml:"memory"`
 
 	MergedEnv  map[string]string `yaml:"-"`
