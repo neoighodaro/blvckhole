@@ -16,6 +16,10 @@ var starterConfig = `# blvckhole sandbox configuration
 name: %s
 agent: claude-code
 
+# Zellij terminal multiplexer integration
+# zellij:
+#   display_name: My Project
+
 # Copy the project to this directory inside the sandbox after creation.
 # When unset, the project stays at the mirrored host path.
 # workspace: /workspace
@@ -39,6 +43,12 @@ runtimes: {}
   # go: "1.23"
   # php: "8.4"
   # rust: "stable"
+
+# Additional PHP extensions (added to defaults: mbstring, xml, curl, pgsql, redis, zip, bcmath, intl, gd, readline)
+# php:
+#   extensions:
+#     - sqlite3
+#     - imagick
 
 # Ports exposed from sandbox to host
 ports: []

@@ -30,9 +30,10 @@ git clone https://github.com/neoighodaro/blvckhole.git
 cd blvckhole
 go build -o blvckhole .
 
-./blvckhole install                     # copies to ~/Developer/bin/
-./blvckhole install --path=/usr/local/bin
-./blvckhole install --symlink           # picks up rebuilds automatically
+./blvckhole install                          # copies to ~/.local/bin/
+./blvckhole install -d /usr/local/bin        # custom directory
+./blvckhole install -s                       # symlink instead of copy (picks up rebuilds)
+./blvckhole install -s -d /usr/local/bin     # both
 ```
 
 ## Usage
@@ -41,6 +42,7 @@ go build -o blvckhole .
 blvckhole init                # scaffold config
 blvckhole start               # build + launch
 blvckhole ssh                 # open a shell
+blvckhole run "pnpm install"  # execute a command in the sandbox
 blvckhole agent               # launch the agent (starts sandbox if needed)
 blvckhole agent --rebuild     # force image rebuild first
 blvckhole stop                # stop (state is kept)
@@ -72,6 +74,11 @@ runtimes:
   # go: "1.23"
   # php: "8.4"
   # rust: "stable"
+
+php:                       # additional extensions (added to defaults)
+  extensions:
+    - sqlite3
+    - imagick
 
 ports:
   - 3000
@@ -105,6 +112,9 @@ claude:                    # Claude Code-specific
   settings:
     alwaysThinkingEnabled: true
 
+zellij:                    # Zellij terminal multiplexer
+  display_name: My Project # tab name when launching the agent
+
 memory: |                  # injected into the agent's CLAUDE.md
   Project-specific instructions here.
 ```
@@ -112,6 +122,10 @@ memory: |                  # injected into the agent's CLAUDE.md
 ## Shell
 
 Sandboxes use bash with a colored prompt, git branch display, and persistent history. Aliases for `bat`, `eza`, `lazygit`, and `please` (sudo last command) are available when those tools are installed. Add your own via `shell.aliases`.
+
+## Skills
+
+If `~/.claude/skills` exists on the host (or is a symlink), its contents are automatically copied into the sandbox at build time. No configuration needed.
 
 ## Agents
 

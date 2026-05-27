@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/neoighodaro/blvckhole/internal/config"
 	"github.com/neoighodaro/blvckhole/internal/sandbox"
@@ -46,6 +48,8 @@ var agentCmd = &cobra.Command{
 		if err := mergeAgentSettings(cfg); err != nil {
 			fmt.Println(ui.Info.Render("Warning: could not merge agent settings: " + err.Error()))
 		}
+
+		renameZellijTab(cfg)
 
 		fmt.Println(ui.Accent.Render("Starting agent..."))
 		return sandbox.Run(cfg.Name, args...)
@@ -96,6 +100,30 @@ func jqMergeFilter(cfg *config.Config) string {
 
 func jqNoMergeFilter(cfg *config.Config) string {
 	return jqSettingsFilter(cfg)
+}
+
+func renameZellijTab(cfg *config.Config) {
+	if cfg.Zellij.DisplayName == "" {
+		return
+	}
+
+	if _, err := exec.LookPath("zellij"); err != nil {
+		return
+	}
+
+	tabName := " " + cfg.Zellij.DisplayName
+
+	out, err := exec.Command("zellij", "action", "current-tab-info").Output()
+	if err != nil {
+		return
+	}
+
+	currentTab := strings.TrimSpace(strings.Split(string(out), "\n")[0])
+	currentTab = strings.TrimPrefix(currentTab, "name: ")
+
+	if currentTab != tabName {
+		exec.Command("zellij", "action", "rename-tab", tabName).Run()
+	}
 }
 
 func init() {

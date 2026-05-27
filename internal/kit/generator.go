@@ -3,6 +3,7 @@ package kit
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -132,7 +133,68 @@ func writeKitFiles(cfg *config.Config, kitDir string) error {
 		return fmt.Errorf("failed to write dashboard config: %w", err)
 	}
 
+	if err := copySkills(claudeDir); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func copySkills(claudeDir string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	skillsSrc := filepath.Join(homeDir, ".claude", "skills")
+
+	resolved, err := filepath.EvalSymlinks(skillsSrc)
+	if err != nil {
+		return nil
+	}
+
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return nil
+	}
+
+	skillsDst := filepath.Join(claudeDir, "skills")
+	if err := os.MkdirAll(skillsDst, 0755); err != nil {
+		return fmt.Errorf("failed to create skills directory: %w", err)
+	}
+
+	return filepath.WalkDir(resolved, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		rel, err := filepath.Rel(resolved, path)
+		if err != nil {
+			return nil
+		}
+		if rel == "." {
+			return nil
+		}
+
+		dst := filepath.Join(skillsDst, rel)
+
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0755)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+
+		fi, _ := d.Info()
+		perm := fs.FileMode(0644)
+		if fi != nil && fi.Mode()&0111 != 0 {
+			perm = 0755
+		}
+
+		return os.WriteFile(dst, data, perm)
+	})
 }
 
 func mergeSettings(cfg *config.Config) ([]byte, error) {

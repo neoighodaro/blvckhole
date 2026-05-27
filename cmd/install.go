@@ -11,11 +11,11 @@ import (
 )
 
 var symlinkFlag bool
-var pathFlag string
+var installDirFlag string
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install blvckhole to ~/Developer/bin/",
+	Short: "Install blvckhole to ~/.local/bin/",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		self, err := os.Executable()
 		if err != nil {
@@ -27,14 +27,14 @@ var installCmd = &cobra.Command{
 		}
 
 		var binDir string
-		if pathFlag != "" {
-			binDir = pathFlag
+		if installDirFlag != "" {
+			binDir = installDirFlag
 		} else {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return fmt.Errorf("cannot determine home directory: %w", err)
 			}
-			binDir = filepath.Join(home, "Developer", "bin")
+			binDir = filepath.Join(home, ".local", "bin")
 		}
 		dest := filepath.Join(binDir, "blvckhole")
 
@@ -74,7 +74,7 @@ var installCmd = &cobra.Command{
 }
 
 func init() {
-	installCmd.Flags().BoolVar(&symlinkFlag, "symlink", false, "Symlink to the current binary instead of copying")
-	installCmd.Flags().StringVar(&pathFlag, "path", "", "Install directory (default: ~/Developer/bin/)")
+	installCmd.Flags().BoolVarP(&symlinkFlag, "symlink", "s", false, "Symlink to the current binary instead of copying")
+	installCmd.Flags().StringVarP(&installDirFlag, "install-directory", "d", "", "Install directory (default: ~/.local/bin/)")
 	rootCmd.AddCommand(installCmd)
 }
