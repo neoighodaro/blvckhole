@@ -30,9 +30,10 @@ git clone https://github.com/neoighodaro/blvckhole.git
 cd blvckhole
 go build -o blvckhole .
 
-./blvckhole install                     # copies to ~/Developer/bin/
-./blvckhole install --path=/usr/local/bin
-./blvckhole install --symlink           # picks up rebuilds automatically
+./blvckhole install                          # copies to ~/.local/bin/
+./blvckhole install -d /usr/local/bin        # custom directory
+./blvckhole install -s                       # symlink instead of copy (picks up rebuilds)
+./blvckhole install -s -d /usr/local/bin     # both
 ```
 
 ## Usage
