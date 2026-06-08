@@ -151,6 +151,20 @@ func Status(name string) (*SandboxInfo, error) {
 	return nil, nil
 }
 
+func WriteFile(name, path, content string) error {
+	script := fmt.Sprintf("cat > %s << 'BLVCKHOLE_EOF'\n%s\nBLVCKHOLE_EOF", path, content)
+	_, err := ExecSilent(name, "bash", "-c", script)
+	return err
+}
+
+func ReadFile(name, path string) (string, error) {
+	output, err := ExecSilent(name, "cat", path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
 func TemplateLoaded(name string) bool {
 	cmd := exec.Command("sbx", "template", "ls")
 	output, err := cmd.Output()

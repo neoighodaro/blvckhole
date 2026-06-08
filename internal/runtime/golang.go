@@ -14,7 +14,8 @@ func (r *GoRuntime) Validate(version string) error {
 }
 
 func (r *GoRuntime) RootBlock(version string) string {
-	return fmt.Sprintf(`RUN curl -fsSL https://go.dev/dl/go%s.linux-amd64.tar.gz | tar -C /usr/local -xzf -`, version)
+	return fmt.Sprintf(`RUN ARCH=$(dpkg --print-architecture) \
+ && curl -fsSL https://go.dev/dl/go%s.linux-$ARCH.tar.gz | tar -C /usr/local -xzf -`, version)
 }
 
 func (r *GoRuntime) AgentBlock(version string) string { return "" }

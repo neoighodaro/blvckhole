@@ -81,6 +81,7 @@ type Config struct {
 
 	MergedEnv  map[string]string `yaml:"-"`
 	ProjectDir string            `yaml:"-"`
+	ConfigPath string            `yaml:"-"`
 }
 
 // Discover searches for a blvckhole.yaml config file in projectDir.
@@ -113,6 +114,7 @@ func Parse(path string, projectDir string) (*Config, error) {
 	}
 
 	cfg.ProjectDir = projectDir
+	cfg.ConfigPath = path
 
 	if cfg.Name == "" {
 		cfg.Name = filepath.Base(projectDir)
