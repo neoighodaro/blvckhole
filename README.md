@@ -48,6 +48,11 @@ blvckhole agent --rebuild     # force image rebuild first
 blvckhole stop                # stop (state is kept)
 blvckhole restart             # tear down + recreate
 blvckhole status              # show sandbox state, ports, runtimes
+
+blvckhole network allow elevenlabs.io            # allow a domain on the running sandbox
+blvckhole network allow elevenlabs.io --persist  # ...and save it to blvckhole.yaml
+blvckhole network deny ads.example.com           # block a domain (runtime-only)
+blvckhole network remove elevenlabs.io --persist # remove the rule and drop it from config
 ```
 
 ## Config

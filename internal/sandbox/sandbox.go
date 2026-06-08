@@ -115,6 +115,29 @@ func AllowNetwork(name string, domains []string) error {
 	return cmd.Run()
 }
 
+func DenyNetwork(name string, domains []string) error {
+	if len(domains) == 0 {
+		return nil
+	}
+	joined := strings.Join(domains, ",")
+	cmd := exec.Command("sbx", "policy", "deny", "network", name, joined)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func RemoveNetwork(name string, domains []string) error {
+	for _, domain := range domains {
+		cmd := exec.Command("sbx", "policy", "rm", "network", name, "--resource", domain)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func PublishPort(name string, mapping string) error {
 	cmd := exec.Command("sbx", "ports", name, "--publish", mapping)
 	cmd.Stdout = os.Stdout
