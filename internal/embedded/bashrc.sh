@@ -21,3 +21,7 @@ alias egrep="egrep --color=auto"
 
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
 [ -f "$HOME/.bash_aliases" ] && source "$HOME/.bash_aliases"
+
+# Per-session init hook (scripts.on_start). Non-interactive bash and the agent
+# load this via BASH_ENV/CLAUDE_ENV_FILE; source it here for interactive shells.
+[ -f /etc/sandbox-persistent.sh ] && source /etc/sandbox-persistent.sh

@@ -49,6 +49,10 @@ func loadConfig(projectDir string) (*config.Config, error) {
 		return nil, err
 	}
 
+	if cfg.UsedDeprecatedStartup {
+		fmt.Println(ui.Warn.Render("'startup:' is deprecated — use 'scripts.on_create' (runs once) or 'scripts.on_start' (runs on every start)."))
+	}
+
 	return cfg, nil
 }
 
@@ -135,8 +139,9 @@ func runStart(cfg *config.Config) error {
 		}
 	}
 
-	// on_start commands are run by sbx on every container start (registered as
-	// kit startup commands in the generated spec), so they are not run here.
+	// on_start commands run on every shell/agent session via the per-session
+	// init hook (/etc/sandbox-persistent.sh, baked into the image by the
+	// Dockerfile), so they are not run here — only on_create runs at creation.
 	if len(cfg.Scripts.OnCreate) > 0 {
 		workDir := cfg.ProjectDir
 		if cfg.Workspace != "" {

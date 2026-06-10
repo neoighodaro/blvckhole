@@ -57,6 +57,10 @@ func Render(cfg *config.Config) (string, error) {
 		}
 	}
 
+	if block := onStartBlock(cfg); block != "" {
+		data.RootBlocks = append(data.RootBlocks, block)
+	}
+
 	funcMap := template.FuncMap{
 		"join": strings.Join,
 	}
@@ -72,6 +76,52 @@ func Render(cfg *config.Config) (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+// onStartBlock returns a Dockerfile RUN that appends the configured on_start
+// commands to /etc/sandbox-persistent.sh — the base image's per-session init
+// hook (wired as BASH_ENV and CLAUDE_ENV_FILE), so they run on every shell and
+// agent session, including after a stop/resume. Each command is run in a
+// subshell with output suppressed so it can't disrupt or spam the host shell;
+// commands must therefore be idempotent. Returns "" when no on_start commands.
+//
+// Because the hook is sourced by EVERY non-interactive bash (via BASH_ENV), an
+// on_start command that itself invokes bash would re-source the hook in that
+// child shell, re-run the commands, spawn another bash, and so on — an infinite
+// recursion / fork bomb. The whole block is therefore wrapped in an *exported*
+// sentinel guard: child shells inherit BLVCKHOLE_ON_START and skip the block,
+// so on_start runs once per process tree instead of recursing.
+func onStartBlock(cfg *config.Config) string {
+	if len(cfg.Scripts.OnStart) == 0 {
+		return ""
+	}
+
+	workDir := cfg.ProjectDir
+	if cfg.Workspace != "" {
+		workDir = cfg.Workspace
+	}
+
+	lines := []string{`if [ -z "${BLVCKHOLE_ON_START:-}" ]; then export BLVCKHOLE_ON_START=1`}
+	for _, cmd := range cfg.Scripts.OnStart {
+		lines = append(lines, fmt.Sprintf("{ cd %s && %s ; } >/dev/null 2>&1 || true", workDir, cmd))
+	}
+	lines = append(lines, "fi")
+
+	var b strings.Builder
+	b.WriteString("USER root\n")
+	b.WriteString("RUN printf '%s\\n' \\\n")
+	for _, line := range lines {
+		b.WriteString("      " + shellSingleQuote(line) + " \\\n")
+	}
+	b.WriteString("    >> /etc/sandbox-persistent.sh\n")
+	b.WriteString("USER agent")
+	return b.String()
+}
+
+// shellSingleQuote wraps s in single quotes, escaping any embedded single
+// quotes, so it survives as one literal argument to printf in a RUN.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func Build(cfg *config.Config) error {
