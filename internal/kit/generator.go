@@ -62,6 +62,22 @@ func buildSpec(cfg *config.Config) string {
 		}
 	}
 
+	if len(cfg.Scripts.OnStart) > 0 {
+		workDir := cfg.ProjectDir
+		if cfg.Workspace != "" {
+			workDir = cfg.Workspace
+		}
+		b.WriteString("\nstartup:\n")
+		for i, cmd := range cfg.Scripts.OnStart {
+			script := fmt.Sprintf("cd %s && %s", workDir, cmd)
+			b.WriteString(fmt.Sprintf("  - name: %q\n", fmt.Sprintf("blvckhole-on-start-%d", i)))
+			b.WriteString("    command:\n")
+			b.WriteString("      - bash\n")
+			b.WriteString("      - -lc\n")
+			b.WriteString(fmt.Sprintf("      - %q\n", script))
+		}
+	}
+
 	if strings.TrimSpace(cfg.Memory) != "" {
 		b.WriteString("\nmemory: |\n")
 		for _, line := range strings.Split(cfg.Memory, "\n") {

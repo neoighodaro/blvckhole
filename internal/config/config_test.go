@@ -26,6 +26,64 @@ agent: claude-code
 	}
 }
 
+func TestParse_ScriptsOnCreateAndOnStart(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `name: scripted
+scripts:
+  on_create:
+    - "composer install"
+  on_start:
+    - "bash bridge.sh"
+`
+	path := filepath.Join(dir, "blvckhole.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Parse(path, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Scripts.OnCreate) != 1 || cfg.Scripts.OnCreate[0] != "composer install" {
+		t.Errorf("Scripts.OnCreate = %v, want [composer install]", cfg.Scripts.OnCreate)
+	}
+	if len(cfg.Scripts.OnStart) != 1 || cfg.Scripts.OnStart[0] != "bash bridge.sh" {
+		t.Errorf("Scripts.OnStart = %v, want [bash bridge.sh]", cfg.Scripts.OnStart)
+	}
+	if cfg.UsedDeprecatedStartup {
+		t.Error("UsedDeprecatedStartup should be false when only scripts: is used")
+	}
+}
+
+func TestParse_DeprecatedStartupFoldsIntoOnCreate(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `name: legacy
+startup:
+  - "echo legacy"
+scripts:
+  on_create:
+    - "echo new"
+`
+	path := filepath.Join(dir, "blvckhole.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Parse(path, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.UsedDeprecatedStartup {
+		t.Error("UsedDeprecatedStartup should be true when startup: is set")
+	}
+	// Deprecated startup runs before any explicit on_create.
+	want := []string{"echo legacy", "echo new"}
+	if len(cfg.Scripts.OnCreate) != len(want) {
+		t.Fatalf("Scripts.OnCreate = %v, want %v", cfg.Scripts.OnCreate, want)
+	}
+	for i := range want {
+		if cfg.Scripts.OnCreate[i] != want[i] {
+			t.Errorf("Scripts.OnCreate[%d] = %q, want %q", i, cfg.Scripts.OnCreate[i], want[i])
+		}
+	}
+}
+
 func TestParse_FullConfig(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=abc\n"), 0644)

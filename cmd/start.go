@@ -135,16 +135,18 @@ func runStart(cfg *config.Config) error {
 		}
 	}
 
-	if len(cfg.Startup) > 0 {
+	// on_start commands are run by sbx on every container start (registered as
+	// kit startup commands in the generated spec), so they are not run here.
+	if len(cfg.Scripts.OnCreate) > 0 {
 		workDir := cfg.ProjectDir
 		if cfg.Workspace != "" {
 			workDir = cfg.Workspace
 		}
-		for _, cmd := range cfg.Startup {
+		for _, cmd := range cfg.Scripts.OnCreate {
 			fmt.Println(ui.Accent.Render("Running: " + cmd))
 			script := fmt.Sprintf("cd %s && %s", workDir, cmd)
 			if err := sandbox.Exec(cfg.Name, false, "bash", "-c", script); err != nil {
-				return fmt.Errorf("startup command failed (%s): %w", cmd, err)
+				return fmt.Errorf("on_create command failed (%s): %w", cmd, err)
 			}
 		}
 	}

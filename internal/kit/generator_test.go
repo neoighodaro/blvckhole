@@ -53,6 +53,63 @@ func TestGenerate_CreatesSpecYaml(t *testing.T) {
 	}
 }
 
+func TestGenerate_OnStartEmitsKitStartupCommands(t *testing.T) {
+	dir := t.TempDir()
+	kitDir := filepath.Join(dir, ".config", "blvckhole", ".kit")
+
+	cfg := &config.Config{
+		Name:       "test-app",
+		Agent:      "claude-code",
+		MergedEnv:  map[string]string{},
+		ProjectDir: dir,
+		Scripts: config.ScriptsConfig{
+			OnStart: []string{"bash .config/blvckhole/scripts/sandbox-db-bridge.sh"},
+		},
+	}
+
+	if err := Generate(cfg, kitDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(kitDir, "spec.yaml"))
+	if err != nil {
+		t.Fatalf("spec.yaml not created: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "startup:") {
+		t.Error("missing startup section for on_start commands")
+	}
+	if !strings.Contains(content, "sandbox-db-bridge.sh") {
+		t.Error("missing on_start command in startup section")
+	}
+	// Must cd into the project so relative script paths resolve.
+	if !strings.Contains(content, "cd "+dir+" &&") {
+		t.Errorf("on_start command should cd into project dir; spec:\n%s", content)
+	}
+}
+
+func TestGenerate_NoOnStartNoStartupSection(t *testing.T) {
+	dir := t.TempDir()
+	kitDir := filepath.Join(dir, ".config", "blvckhole", ".kit")
+
+	cfg := &config.Config{
+		Name:       "bare",
+		Agent:      "claude-code",
+		MergedEnv:  map[string]string{},
+		ProjectDir: dir,
+	}
+
+	if err := Generate(cfg, kitDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(kitDir, "spec.yaml"))
+	if strings.Contains(string(data), "startup:") {
+		t.Error("should not include startup section when no on_start commands")
+	}
+}
+
 func TestGenerate_CreatesThemeFile(t *testing.T) {
 	dir := t.TempDir()
 	kitDir := filepath.Join(dir, ".config", "blvckhole", ".kit")
