@@ -75,10 +75,18 @@ shell:
     # dc: "docker compose"
     # clr: "clear"
 
-# Commands to run inside the sandbox after creation (in order)
-startup: []
-  # - "pnpm install"
-  # - "pnpm build"
+# Scripts run inside the sandbox at lifecycle points
+scripts:
+  # Run once, right after the sandbox is created
+  on_create: []
+    # - "pnpm install"
+    # - "pnpm build"
+
+  # Run at the start of every shell/agent session (including after a stop/
+  # resume). Use for state a restart wipes, e.g. port bridges or daemons.
+  # Baked into the sandbox's per-session init hook; must be idempotent.
+  on_start: []
+    # - "./scripts/db-bridge.sh"
 
 # Network whitelist (only these domains are reachable from the sandbox)
 network: []

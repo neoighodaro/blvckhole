@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/neoighodaro/blvckhole/internal/config"
 	"github.com/neoighodaro/blvckhole/internal/kit"
@@ -45,15 +49,34 @@ func loadConfig(projectDir string) (*config.Config, error) {
 		return nil, err
 	}
 
+	if cfg.UsedDeprecatedStartup {
+		fmt.Println(ui.Warn.Render("'startup:' is deprecated — use 'scripts.on_create' (runs once) or 'scripts.on_start' (runs on every start)."))
+	}
+
 	return cfg, nil
 }
 
 func runStart(cfg *config.Config) error {
 	if sandbox.IsRunning(cfg.Name) {
-		fmt.Println(ui.Success.Render("Sandbox already running (" + cfg.Name + ")"))
-		fmt.Println(ui.Info.Render("  Run 'blvckhole agent' to start the AI agent"))
-		fmt.Println(ui.Info.Render("  Run 'blvckhole shell' to open a shell"))
-		return nil
+		if configChanged(cfg) {
+			fmt.Println(ui.Warn.Render("Config has changed since this sandbox was created."))
+			fmt.Print(ui.Info.Render("Restart now? [y/N] "))
+			reader := bufio.NewReader(os.Stdin)
+			answer, _ := reader.ReadString('\n')
+			if strings.TrimSpace(strings.ToLower(answer)) == "y" {
+				fmt.Println(ui.Accent.Render("Removing sandbox..."))
+				if err := sandbox.Remove(cfg.Name); err != nil {
+					return fmt.Errorf("failed to remove sandbox: %w", err)
+				}
+			} else {
+				return nil
+			}
+		} else {
+			fmt.Println(ui.Success.Render("Sandbox already running (" + cfg.Name + ")"))
+			fmt.Println(ui.Info.Render("  Run 'blvckhole agent' to start the AI agent"))
+			fmt.Println(ui.Info.Render("  Run 'blvckhole shell' to open a shell"))
+			return nil
+		}
 	}
 
 	if sandbox.Exists(cfg.Name) {
@@ -93,6 +116,8 @@ func runStart(cfg *config.Config) error {
 		return fmt.Errorf("failed to create sandbox: %w", err)
 	}
 
+	storeConfigHash(cfg)
+
 	if cfg.Workspace != "" {
 		fmt.Println(ui.Accent.Render("Linking project to " + cfg.Workspace + "..."))
 		if err := sandbox.LinkWorkspace(cfg.Name, cfg.ProjectDir, cfg.Workspace); err != nil {
@@ -114,16 +139,19 @@ func runStart(cfg *config.Config) error {
 		}
 	}
 
-	if len(cfg.Startup) > 0 {
+	// on_start commands run on every shell/agent session via the per-session
+	// init hook (/etc/sandbox-persistent.sh, baked into the image by the
+	// Dockerfile), so they are not run here — only on_create runs at creation.
+	if len(cfg.Scripts.OnCreate) > 0 {
 		workDir := cfg.ProjectDir
 		if cfg.Workspace != "" {
 			workDir = cfg.Workspace
 		}
-		for _, cmd := range cfg.Startup {
+		for _, cmd := range cfg.Scripts.OnCreate {
 			fmt.Println(ui.Accent.Render("Running: " + cmd))
 			script := fmt.Sprintf("cd %s && %s", workDir, cmd)
 			if err := sandbox.Exec(cfg.Name, false, "bash", "-c", script); err != nil {
-				return fmt.Errorf("startup command failed (%s): %w", cmd, err)
+				return fmt.Errorf("on_create command failed (%s): %w", cmd, err)
 			}
 		}
 	}
@@ -132,6 +160,35 @@ func runStart(cfg *config.Config) error {
 	fmt.Println(ui.Info.Render("  Run 'blvckhole agent' to start the AI agent"))
 	fmt.Println(ui.Info.Render("  Run 'blvckhole shell' to open a shell"))
 	return nil
+}
+
+const configHashPath = "/home/agent/.blvckhole-config-hash"
+
+func hashConfigFile(cfg *config.Config) string {
+	data, err := os.ReadFile(cfg.ConfigPath)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func storeConfigHash(cfg *config.Config) {
+	if hash := hashConfigFile(cfg); hash != "" {
+		sandbox.WriteFile(cfg.Name, configHashPath, hash)
+	}
+}
+
+func configChanged(cfg *config.Config) bool {
+	stored, err := sandbox.ReadFile(cfg.Name, configHashPath)
+	if err != nil || stored == "" {
+		return false
+	}
+	current := hashConfigFile(cfg)
+	if current == "" {
+		return false
+	}
+	return stored != current
 }
 
 func init() {

@@ -48,6 +48,11 @@ blvckhole agent --rebuild     # force image rebuild first
 blvckhole stop                # stop (state is kept)
 blvckhole restart             # tear down + recreate
 blvckhole status              # show sandbox state, ports, runtimes
+
+blvckhole network allow elevenlabs.io            # allow a domain on the running sandbox
+blvckhole network allow elevenlabs.io --persist  # ...and save it to blvckhole.yaml
+blvckhole network deny ads.example.com           # block a domain (runtime-only)
+blvckhole network remove elevenlabs.io --persist # remove the rule and drop it from config
 ```
 
 ## Config
@@ -91,6 +96,12 @@ env_file:                  # loaded in order, later wins
   - .env
   - .env.sandbox
 
+scripts:
+  on_create:               # run once, right after the sandbox is created
+    - "composer install"
+  on_start:                # run on every container start (survives stop/resume)
+    - "./scripts/db-bridge.sh"   # bridges, daemons — things a restart would wipe
+
 shell:
   directory: /home/agent/project/src
   aliases:
@@ -122,6 +133,12 @@ memory: |                  # injected into the agent's CLAUDE.md
 ## Shell
 
 Sandboxes use bash with a colored prompt, git branch display, and persistent history. Aliases for `bat`, `eza`, `lazygit`, and `please` (sudo last command) are available when those tools are installed. Add your own via `shell.aliases`.
+
+## Scripts
+
+`scripts.on_create` runs once, right after the sandbox is created (migrations, dependency installs) — run via `blvckhole start`. `scripts.on_start` runs at the start of **every** shell and agent session — including after a stop/resume — so use it for state that a restart wipes: port bridges, background daemons, `socat` tunnels. on_start commands are baked into the sandbox's per-session init hook (`/etc/sandbox-persistent.sh`) at build time, run in a subshell with output suppressed, so they **must be idempotent**. (on_start requires a generated Dockerfile; it has no effect with a custom `template`.)
+
+> The old top-level `startup:` key is deprecated. It still works (it now aliases `scripts.on_create`) but prints a warning — migrate to `scripts.on_create`.
 
 ## Skills
 

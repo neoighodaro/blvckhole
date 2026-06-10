@@ -115,6 +115,29 @@ func AllowNetwork(name string, domains []string) error {
 	return cmd.Run()
 }
 
+func DenyNetwork(name string, domains []string) error {
+	if len(domains) == 0 {
+		return nil
+	}
+	joined := strings.Join(domains, ",")
+	cmd := exec.Command("sbx", "policy", "deny", "network", name, joined)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func RemoveNetwork(name string, domains []string) error {
+	for _, domain := range domains {
+		cmd := exec.Command("sbx", "policy", "rm", "network", name, "--resource", domain)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func PublishPort(name string, mapping string) error {
 	cmd := exec.Command("sbx", "ports", name, "--publish", mapping)
 	cmd.Stdout = os.Stdout
@@ -149,6 +172,20 @@ func Status(name string) (*SandboxInfo, error) {
 	}
 
 	return nil, nil
+}
+
+func WriteFile(name, path, content string) error {
+	script := fmt.Sprintf("cat > %s << 'BLVCKHOLE_EOF'\n%s\nBLVCKHOLE_EOF", path, content)
+	_, err := ExecSilent(name, "bash", "-c", script)
+	return err
+}
+
+func ReadFile(name, path string) (string, error) {
+	output, err := ExecSilent(name, "cat", path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
 }
 
 func TemplateLoaded(name string) bool {

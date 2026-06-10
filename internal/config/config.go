@@ -61,6 +61,17 @@ type ZellijConfig struct {
 	DisplayName string `yaml:"display_name"`
 }
 
+// ScriptsConfig holds commands run inside the sandbox at lifecycle points.
+//
+//	OnCreate runs once, right after the sandbox is created.
+//	OnStart  runs on every container start, including resume after a stop —
+//	         use it for things that don't survive a restart (port bridges,
+//	         background daemons). Emitted as sbx kit startup commands.
+type ScriptsConfig struct {
+	OnCreate []string `yaml:"on_create"`
+	OnStart  []string `yaml:"on_start"`
+}
+
 type Config struct {
 	Name      string            `yaml:"name"`
 	Agent     string            `yaml:"agent"`
@@ -72,15 +83,18 @@ type Config struct {
 	Env       map[string]string `yaml:"env"`
 	EnvFile   []string          `yaml:"env_file"`
 	Network   []string          `yaml:"network"`
-	Startup   []string          `yaml:"startup"`
+	Scripts   ScriptsConfig     `yaml:"scripts"`
+	Startup   []string          `yaml:"startup"` // deprecated: use scripts.on_create
 	Shell     ShellConfig       `yaml:"shell"`
 	Claude    ClaudeConfig      `yaml:"claude"`
 	Php       PhpConfig         `yaml:"php"`
 	Zellij    ZellijConfig      `yaml:"zellij"`
 	Memory    string            `yaml:"memory"`
 
-	MergedEnv  map[string]string `yaml:"-"`
-	ProjectDir string            `yaml:"-"`
+	MergedEnv             map[string]string `yaml:"-"`
+	ProjectDir            string            `yaml:"-"`
+	ConfigPath            string            `yaml:"-"`
+	UsedDeprecatedStartup bool              `yaml:"-"`
 }
 
 // Discover searches for a blvckhole.yaml config file in projectDir.
@@ -113,12 +127,20 @@ func Parse(path string, projectDir string) (*Config, error) {
 	}
 
 	cfg.ProjectDir = projectDir
+	cfg.ConfigPath = path
 
 	if cfg.Name == "" {
 		cfg.Name = filepath.Base(projectDir)
 	}
 	if cfg.Agent == "" {
 		cfg.Agent = "claude-code"
+	}
+
+	// Deprecated 'startup:' is an alias for 'scripts.on_create' — fold it in
+	// (running before any explicit on_create) and flag it so callers can warn.
+	if len(cfg.Startup) > 0 {
+		cfg.UsedDeprecatedStartup = true
+		cfg.Scripts.OnCreate = append(append([]string{}, cfg.Startup...), cfg.Scripts.OnCreate...)
 	}
 
 	cfg.MergedEnv = make(map[string]string)
