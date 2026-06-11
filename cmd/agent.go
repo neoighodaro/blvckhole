@@ -43,6 +43,9 @@ var agentCmd = &cobra.Command{
 			if err := runStart(cfg); err != nil {
 				return err
 			}
+		} else if sandbox.IsRunning(cfg.Name) && configChanged(cfg) {
+			fmt.Println(ui.Warn.Render("Config has changed since this sandbox was created."))
+			fmt.Println(ui.Info.Render("  Run 'blvckhole agent --rebuild' to apply the changes."))
 		}
 
 		if err := mergeAgentSettings(cfg); err != nil {
@@ -111,7 +114,7 @@ func renameZellijTab(cfg *config.Config) {
 		return
 	}
 
-	tabName := " " + cfg.Zellij.DisplayName
+	tabName := "\uf023 " + cfg.Zellij.DisplayName
 
 	out, err := exec.Command("zellij", "action", "current-tab-info").Output()
 	if err != nil {
