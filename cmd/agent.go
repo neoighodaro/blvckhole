@@ -111,7 +111,7 @@ func renameZellijTab(cfg *config.Config) {
 		return
 	}
 
-	tabName := " " + cfg.Zellij.DisplayName
+	tabName := " " + cfg.Zellij.DisplayName + " "
 
 	out, err := exec.Command("zellij", "action", "current-tab-info").Output()
 	if err != nil {
