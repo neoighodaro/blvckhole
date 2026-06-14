@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,6 +33,11 @@ var agentCmd = &cobra.Command{
 			return err
 		}
 
+		// Rename the tab up front, while the launching pane is still focused.
+		// Doing this after the (potentially slow) sandbox startup would risk
+		// renaming whatever tab the user switched to in the meantime.
+		renameZellijTab(cfg)
+
 		if rebuildFlag {
 			if sandbox.IsRunning(cfg.Name) {
 				fmt.Println(ui.Info.Render("Removing existing sandbox..."))
@@ -51,8 +57,6 @@ var agentCmd = &cobra.Command{
 		if err := mergeAgentSettings(cfg); err != nil {
 			fmt.Println(ui.Info.Render("Warning: could not merge agent settings: " + err.Error()))
 		}
-
-		renameZellijTab(cfg)
 
 		fmt.Println(ui.Accent.Render("Starting agent..."))
 		return sandbox.Run(cfg.Name, args...)
@@ -114,19 +118,92 @@ func renameZellijTab(cfg *config.Config) {
 		return
 	}
 
-	tabName := "\uf023 " + cfg.Zellij.DisplayName
+	// zellij's `rename-tab` always targets the *focused* tab, not the tab that
+	// launched this process. Only rename when our own pane is the focused one,
+	// so switching to another tab while a sandbox starts can't rename it.
+	if !paneIsFocused() {
+		return
+	}
 
-	out, err := exec.Command("zellij", "action", "current-tab-info").Output()
+	out, err := exec.Command("zellij", "action", "list-tabs", "--state", "--json").Output()
 	if err != nil {
 		return
 	}
 
-	currentTab := strings.TrimSpace(strings.Split(string(out), "\n")[0])
-	currentTab = strings.TrimPrefix(currentTab, "name: ")
+	active, ok := activeZellijTab(string(out))
+	if !ok {
+		return
+	}
 
-	if currentTab != tabName {
+	// Don't hijack a tab's name when launched from an ad-hoc floating pane \u2014 the
+	// floating pane is a transient overlay, not the tab's identity. Our pane is
+	// the focused one (checked above), so visible floating panes in the active
+	// tab mean we were launched from a floating pane.
+	if active.FloatingVisible {
+		return
+	}
+
+	tabName := "\uf023 " + cfg.Zellij.DisplayName
+	if active.Name != tabName {
 		exec.Command("zellij", "action", "rename-tab", tabName).Run()
 	}
+}
+
+// zellijTab is the subset of `zellij action list-tabs --json` we care about.
+type zellijTab struct {
+	Name            string `json:"name"`
+	Active          bool   `json:"active"`
+	FloatingVisible bool   `json:"are_floating_panes_visible"`
+}
+
+// activeZellijTab returns the active (focused) tab from `list-tabs --json`
+// output. The second return is false if the output can't be parsed or no tab is
+// marked active.
+func activeZellijTab(listTabsJSON string) (zellijTab, bool) {
+	var tabs []zellijTab
+	if err := json.Unmarshal([]byte(listTabsJSON), &tabs); err != nil {
+		return zellijTab{}, false
+	}
+	for _, t := range tabs {
+		if t.Active {
+			return t, true
+		}
+	}
+	return zellijTab{}, false
+}
+
+// paneIsFocused reports whether the pane this process runs in is the one
+// currently focused in the zellij session. It compares our $ZELLIJ_PANE_ID
+// against the focused pane reported by `zellij action list-clients`, whose
+// ZELLIJ_PANE_ID column is rendered as e.g. "terminal_5".
+func paneIsFocused() bool {
+	paneID := os.Getenv("ZELLIJ_PANE_ID")
+	if paneID == "" {
+		return false
+	}
+
+	out, err := exec.Command("zellij", "action", "list-clients").Output()
+	if err != nil {
+		return false
+	}
+
+	return clientsFocusPane(string(out), paneID)
+}
+
+// clientsFocusPane reports whether any client in `zellij action list-clients`
+// output is focused on the pane with the given $ZELLIJ_PANE_ID. The PANE_ID
+// column is rendered as e.g. "terminal_5".
+func clientsFocusPane(listClientsOutput, paneID string) bool {
+	want := "terminal_" + paneID
+	lines := strings.Split(listClientsOutput, "\n")
+	for _, line := range lines[1:] { // skip header row
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == want {
+			return true
+		}
+	}
+
+	return false
 }
 
 func init() {
