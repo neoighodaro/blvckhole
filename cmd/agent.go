@@ -39,9 +39,14 @@ var agentCmd = &cobra.Command{
 		renameZellijTab(cfg)
 
 		if rebuildFlag {
-			if sandbox.IsRunning(cfg.Name) {
+			// Rebuild must tear down whatever exists — including a stopped
+			// (existing but not running) sandbox — otherwise the !Exists check
+			// below skips runStart and the agent boots in the stale sandbox.
+			if sandbox.Exists(cfg.Name) {
 				fmt.Println(ui.Info.Render("Removing existing sandbox..."))
-				sandbox.Remove(cfg.Name)
+				if err := sandbox.Remove(cfg.Name); err != nil {
+					return fmt.Errorf("failed to remove sandbox: %w", err)
+				}
 			}
 		}
 
