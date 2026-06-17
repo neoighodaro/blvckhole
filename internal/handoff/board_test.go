@@ -34,7 +34,7 @@ func TestRenderBoard_RendersThreadAndEscapes(t *testing.T) {
 	if !strings.Contains(out, "api") || !strings.Contains(out, "web") {
 		t.Error("board should show from and to")
 	}
-	if strings.Contains(out, "<script>") {
+	if strings.Contains(out, "Hi <script>") {
 		t.Error("subject must be HTML-escaped, found raw <script>")
 	}
 	if !strings.Contains(out, "Hi &lt;script&gt;") {
@@ -42,6 +42,34 @@ func TestRenderBoard_RendersThreadAndEscapes(t *testing.T) {
 	}
 	if !strings.Contains(out, "body &amp; &lt;b&gt;") {
 		t.Error("message body should appear escaped")
+	}
+}
+
+// TestRenderBoard_AnsweredCollapsedByDefault verifies the mission board renders
+// each thread as a collapsible <details>: open threads start expanded (the open
+// attribute is present) while answered threads start collapsed (no open
+// attribute). It also checks the state-persistence script is wired in.
+func TestRenderBoard_AnsweredCollapsedByDefault(t *testing.T) {
+	threads := []Thread{
+		{ID: "o", From: "api", To: "web", Subject: "open one", Status: StatusOpen},
+		{ID: "a", From: "api", To: "web", Subject: "answered one", Status: StatusAnswered},
+	}
+	var b strings.Builder
+	if err := RenderBoard(&b, threads, "mission"); err != nil {
+		t.Fatalf("RenderBoard: %v", err)
+	}
+	out := b.String()
+	if !strings.Contains(out, `data-thread="o" open>`) {
+		t.Error("open thread should render expanded (open attribute)")
+	}
+	if !strings.Contains(out, `data-thread="a">`) {
+		t.Error("answered thread should render collapsed (no open attribute)")
+	}
+	if strings.Contains(out, `data-thread="a" open>`) {
+		t.Error("answered thread must not be expanded by default")
+	}
+	if !strings.Contains(out, "handoff:open:") {
+		t.Error("board should include the collapse-state persistence script")
 	}
 }
 

@@ -205,20 +205,24 @@ body{
   70%{box-shadow:0 0 0 7px rgba(70,224,160,0)}
   100%{box-shadow:0 0 0 0 rgba(70,224,160,0)}
 }
-.thread{position:relative; display:flex; width:100%; background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:12px; margin-bottom:16px; overflow:hidden}
-.thread-bar{flex:0 0 3px; background:var(--faint)}
-.thread.open .thread-bar{background:var(--open); box-shadow:0 0 16px rgba(245,196,81,.55)}
-.thread.answered .thread-bar{background:var(--answered); box-shadow:0 0 16px rgba(70,224,160,.45)}
-.thread-main{flex:1; padding:16px 18px; min-width:0}
-.thead{display:flex; align-items:flex-start; justify-content:space-between; gap:12px}
-.subject{font-family:var(--disp); font-weight:600; font-size:16px; margin:0; color:#eef4ff}
+.thread{position:relative; width:100%; background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-left:3px solid var(--faint); border-radius:12px; margin-bottom:16px; overflow:hidden}
+.thread.open{border-left-color:var(--open)}
+.thread.answered{border-left-color:var(--answered)}
+summary.thead{display:block; padding:15px 18px 10px; cursor:pointer; list-style:none; outline-offset:-2px; -webkit-user-select:none; user-select:none}
+summary.thead::-webkit-details-marker{display:none}
+summary.thead:hover .subject{color:#fff}
+.thead-row{display:flex; align-items:flex-start; gap:11px}
+.chev{flex:0 0 auto; padding-top:3px; color:var(--faint); font-size:12px; transition:transform .15s}
+.thread[open] .chev{transform:rotate(90deg); color:var(--muted)}
+.thread-main{padding:0 18px 16px; min-width:0}
+.subject{flex:1; min-width:0; font-family:var(--disp); font-weight:600; font-size:16px; margin:0; color:#eef4ff}
 .status{font-size:11px; text-transform:uppercase; letter-spacing:.15em; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; padding-top:3px}
 .status .led{width:8px; height:8px; border-radius:50%}
 .thread.open .status{color:var(--open)}
 .thread.open .led{background:var(--open); box-shadow:0 0 10px var(--open)}
 .thread.answered .status{color:var(--answered)}
 .thread.answered .led{background:var(--answered); box-shadow:0 0 10px var(--answered)}
-.sub{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:9px; font-size:11.5px; color:var(--muted)}
+.sub{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:0; font-size:11.5px; color:var(--muted)}
 .sub .route{color:var(--cyan)}
 .sub .id{color:var(--faint)}
 .sub .upd{margin-left:auto; color:var(--faint)}
@@ -232,8 +236,8 @@ body{
 .msg .at{color:var(--faint); font-size:10.5px; margin-left:9px}
 .msg .body{margin:5px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink); font-size:13px}
 .msg .body.clip{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden}
-.open{display:inline-flex; align-items:center; gap:6px; margin-top:14px; font-family:var(--disp); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--cyan); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:7px 13px; transition:.15s}
-.open:hover{background:rgba(92,200,255,.10); border-color:var(--cyan)}
+.view-link{display:inline-flex; align-items:center; gap:6px; margin-top:14px; font-family:var(--disp); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--cyan); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:7px 13px; transition:.15s}
+.view-link:hover{background:rgba(92,200,255,.10); border-color:var(--cyan)}
 .empty{text-align:center; color:var(--faint); padding:90px 0; letter-spacing:.1em}
 /* detail */
 .detail{padding-top:26px}
@@ -284,13 +288,15 @@ const missionTmpl = `<!DOCTYPE html>
     <div class="meta"><span class="pulse"></span> {{.Count}} active · {{.Now}}</div>
   </header>
   {{range .Threads}}
-  <article class="thread {{.Status}}">
-    <div class="thread-bar"></div>
-    <div class="thread-main">
-      <div class="thead">
+  <details class="thread {{.Status}}" data-thread="{{.ID}}"{{if eq .Status "open"}} open{{end}}>
+    <summary class="thead">
+      <div class="thead-row">
         <h2 class="subject">{{.Subject}}</h2>
         <span class="status"><i class="led"></i>{{.Status}}</span>
+        <span class="chev" aria-hidden="true">▸</span>
       </div>
+    </summary>
+    <div class="thread-main">
       <div class="sub">
         <span class="route">{{.From}} → {{.To}}</span><span class="dot">·</span>
         <span class="count">{{.Count}} msg</span><span class="dot">·</span>
@@ -306,13 +312,34 @@ const missionTmpl = `<!DOCTYPE html>
         </li>
         {{end}}
       </ul>
-      <a class="open" href="/handoff/thread/{{.ID}}?v={{$.Variant}}">view full thread →</a>
+      <a class="view-link" href="/handoff/thread/{{.ID}}?v={{$.Variant}}">view full thread →</a>
     </div>
-  </article>
+  </details>
   {{else}}
   <div class="empty">No threads yet.</div>
   {{end}}
 </div>
+<script>
+(function () {
+  var KEY = 'handoff:open:';
+  var store = null;
+  try { store = window.localStorage; } catch (e) { store = null; }
+  document.querySelectorAll('details.thread[data-thread]').forEach(function (d) {
+    var id = d.getAttribute('data-thread');
+    if (store) {
+      try {
+        var saved = store.getItem(KEY + id);
+        if (saved === '1') d.open = true;
+        else if (saved === '0') d.open = false;
+      } catch (e) {}
+    }
+    d.addEventListener('toggle', function () {
+      if (!store) return;
+      try { store.setItem(KEY + id, d.open ? '1' : '0'); } catch (e) {}
+    });
+  });
+})();
+</script>
 {{template "switcher" .}}
 </body>
 </html>`
