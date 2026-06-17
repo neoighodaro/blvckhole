@@ -1,0 +1,37 @@
+name: blvckhole
+agent: claude-code
+
+zellij:
+  display_name: blvckhole
+
+packages:
+  - ripgrep
+
+runtimes:
+  go: "1.26.4"
+
+network:
+  - "proxy.golang.org"
+  - "sum.golang.org"
+  - "storage.googleapis.com"
+  - "api.github.com"
+  - "github.com"
+  - "objects.githubusercontent.com"
+
+handoff:
+  enabled: true
+
+scripts:
+  on_create:
+    - "go mod download"
+
+claude:
+  settings:
+    tui: "default"
+    model: "claude-opus-4-8"
+
+memory: |
+  This is the blvckhole project itself — a CLI tool that creates and manages
+  Docker-based development sandboxes. Be careful when testing changes: running
+  `blvckhole start` inside the sandbox will try to create a nested sandbox.
+  Use `go test ./...` and `go build` for validation instead.
