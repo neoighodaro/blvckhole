@@ -21,3 +21,6 @@ var BashrcSh []byte
 
 //go:embed bash_aliases.sh
 var BashAliasesSh []byte
+
+//go:embed sandbox-handoff.md
+var SandboxHandoffMD []byte
