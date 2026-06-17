@@ -266,3 +266,71 @@ func TestDiscover_NotFound(t *testing.T) {
 		t.Fatal("expected error when no config file exists")
 	}
 }
+
+func TestParse_HandoffDefaultsURL(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `name: my-app
+handoff:
+  enabled: true
+`
+	path := filepath.Join(dir, "blvckhole.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Parse(path, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Handoff.Enabled {
+		t.Fatal("Handoff.Enabled should be true")
+	}
+	if cfg.Handoff.URL != "http://host.docker.internal:8787" {
+		t.Errorf("Handoff.URL = %q, want default", cfg.Handoff.URL)
+	}
+	if cfg.HandoffPort() != "8787" {
+		t.Errorf("HandoffPort() = %q, want 8787", cfg.HandoffPort())
+	}
+}
+
+func TestParse_HandoffCustomURL(t *testing.T) {
+	dir := t.TempDir()
+	yaml := `name: my-app
+handoff:
+  enabled: true
+  url: http://host.docker.internal:9000
+`
+	path := filepath.Join(dir, "blvckhole.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Parse(path, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.HandoffPort() != "9000" {
+		t.Errorf("HandoffPort() = %q, want 9000", cfg.HandoffPort())
+	}
+}
+
+func TestValidate_HandoffInvalidURL(t *testing.T) {
+	cfg := &Config{
+		Name:  "test",
+		Agent: "claude-code",
+		Handoff: HandoffConfig{
+			Enabled: true,
+			URL:     "not-a-url-without-port",
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for handoff.url without host:port")
+	}
+}
+
+func TestValidate_HandoffDisabledSkipsURLCheck(t *testing.T) {
+	cfg := &Config{
+		Name:    "test",
+		Agent:   "claude-code",
+		Handoff: HandoffConfig{Enabled: false, URL: "garbage"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("disabled handoff should not validate URL, got: %v", err)
+	}
+}

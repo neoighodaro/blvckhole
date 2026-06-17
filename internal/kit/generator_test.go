@@ -192,3 +192,52 @@ func TestGenerate_NoEnvNoNetworkNoMemory(t *testing.T) {
 		t.Error("should not include memory section when empty")
 	}
 }
+
+func TestGenerate_WritesHandoffSkillWhenEnabled(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.claude/skills
+	dir := t.TempDir()
+	kitDir := filepath.Join(dir, ".config", "blvckhole", ".kit")
+
+	cfg := &config.Config{
+		Name:       "demo",
+		Agent:      "claude-code",
+		MergedEnv:  map[string]string{},
+		ProjectDir: dir,
+	}
+	cfg.Handoff.Enabled = true
+
+	if err := Generate(cfg, kitDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	skillPath := filepath.Join(kitDir, "files", "home", ".claude", "skills", "sandbox-handoff", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("sandbox-handoff skill not written: %v", err)
+	}
+	if !strings.Contains(string(data), "name: sandbox-handoff") {
+		t.Error("skill file should contain the sandbox-handoff frontmatter")
+	}
+}
+
+func TestGenerate_SkipsHandoffSkillWhenDisabled(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate from any real ~/.claude/skills
+	dir := t.TempDir()
+	kitDir := filepath.Join(dir, ".config", "blvckhole", ".kit")
+
+	cfg := &config.Config{
+		Name:       "demo",
+		Agent:      "claude-code",
+		MergedEnv:  map[string]string{},
+		ProjectDir: dir,
+	}
+
+	if err := Generate(cfg, kitDir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	skillPath := filepath.Join(kitDir, "files", "home", ".claude", "skills", "sandbox-handoff", "SKILL.md")
+	if _, err := os.Stat(skillPath); !os.IsNotExist(err) {
+		t.Errorf("skill should not be written when handoff disabled (err=%v)", err)
+	}
+}
