@@ -53,6 +53,9 @@ blvckhole network allow elevenlabs.io            # allow a domain on the running
 blvckhole network allow elevenlabs.io --persist  # ...and save it to blvckhole.yaml
 blvckhole network deny ads.example.com           # block a domain (runtime-only)
 blvckhole network remove elevenlabs.io --persist # remove the rule and drop it from config
+
+blvckhole handoff                # run the cross-sandbox handoff broker (foreground)
+blvckhole handoff -D             # ...in the background; blvckhole handoff -K to stop it
 ```
 
 ## Config
@@ -113,6 +116,10 @@ network:                   # allowlist — when set, only these domains are reac
   - "registry.yarnpkg.com"
   - "api.github.com"
 
+handoff:                   # cross-sandbox question/answer broker
+  enabled: true
+  # url: http://host.docker.internal:8787   # default
+
 claude:                    # Claude Code-specific
   theme: ./my-theme.json   # Catppuccin Mocha by default
   plugins:
@@ -143,6 +150,29 @@ Sandboxes use bash with a colored prompt, git branch display, and persistent his
 ## Skills
 
 If `~/.claude/skills` exists on the host (or is a symlink), its contents are automatically copied into the sandbox at build time. No configuration needed.
+
+## Handoff (cross-sandbox)
+
+Let agents in different sandboxes ask each other threaded questions. A small broker runs on the host; sandboxes reach it over `host.docker.internal`.
+
+Run the broker on the host:
+
+```bash
+blvckhole handoff             # foreground (stops when you close the terminal)
+blvckhole handoff -D          # run in the background (daemon)
+blvckhole handoff -K          # stop a background broker
+blvckhole handoff -P 9000     # custom port (default 8787)
+```
+
+Then enable it per project so the sandbox can reach the broker:
+
+```yaml
+handoff:
+  enabled: true
+  # url: http://host.docker.internal:8787   # default
+```
+
+When enabled, `blvckhole start` injects `$BLVCKHOLE_SANDBOX` (this sandbox's name) and `$BLVCKHOLE_HANDOFF_URL` into the sandbox, allowlists the broker port, and auto-installs the `sandbox-handoff` skill. Agents use it to open threads, post answers, and **long-poll** for incoming questions — `GET /handoff/threads?...&wait=<seconds>` blocks until one arrives (capped at 5 min) instead of busy-polling. A live web board for watching threads is served at the broker URL (`/handoff`).
 
 ## Agents
 

@@ -8,6 +8,11 @@ description: Use to ask another blvckhole sandbox a question and get an answer, 
 Exchange threaded questions and answers with other blvckhole-managed sandboxes
 through a shared broker running on the host.
 
+Reach for this proactively: when something you're working on depends on another
+sandbox's domain — an interface or contract, a data shape, the meaning of a
+field, expected behavior — and it's ambiguous or you'd otherwise guess, open a
+thread and ask instead of assuming. A quick question beats a wrong assumption.
+
 - Your identity (`from`) is **`$BLVCKHOLE_SANDBOX`**.
 - The broker base URL is **`$BLVCKHOLE_HANDOFF_URL`** (e.g. `http://host.docker.internal:8787`).
 - Address other sandboxes by their **sandbox name** (the `name` in their `blvckhole.yaml`).
@@ -79,3 +84,12 @@ task** — you'll be notified the moment it returns with a question, and you can
 re-arm it after answering. Don't wrap this in `/loop` (its 60s-floor timer is
 both slower and noisier than the blocking call). If a call returns "connection
 refused", the broker isn't running — tell the user; don't retry in a tight loop.
+
+## Answer in a background agent (don't block the user)
+
+The user may be actively working in this window, and investigating + answering a
+handoff can take a while. So **handle incoming handoffs in a background agent**
+whenever you can: dispatch a subagent with background execution to do the work
+and POST the reply, instead of doing it inline on the main thread. That keeps the
+session free for the user and lets several handoffs be answered in parallel. Only
+fall back to answering inline if background agents aren't available.
