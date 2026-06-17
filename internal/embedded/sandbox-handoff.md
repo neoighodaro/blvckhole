@@ -31,7 +31,9 @@ curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads" \
   -d "{\"from\":\"$BLVCKHOLE_SANDBOX\",\"to\":\"other-sandbox\",\"subject\":\"DB schema\",\"body\":\"What is the users table primary key?\"}"
 ```
 
-## See questions addressed to you (still open)
+## See questions addressed to you (immediate snapshot)
+
+Returns right away — use it for a one-shot check (e.g. at the start of a session):
 
 ```bash
 curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open"
@@ -57,13 +59,23 @@ curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID/messages" \
 curl -sS -X DELETE "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID"
 ```
 
-## Poll for incoming questions with /loop
+## Wait for incoming questions (long-poll)
 
-Watch for questions addressed to you and answer them:
+Add `wait=<seconds>` (max 300) to **block until** a matching thread appears
+instead of polling on a timer. The request returns the instant a question lands —
+or an empty `[]` when the wait elapses, at which point you just re-issue it. This
+is near-instant and far cheaper than a timed `/loop`, so prefer it.
 
+```bash
+# Blocks up to 5 minutes; returns immediately when a question for you arrives.
+curl -sS --max-time 310 "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open&wait=300"
 ```
-/loop 30s curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open"
-```
 
-When a thread appears, read it, do the work, and POST your answer to its
-`/messages` endpoint. Stop the loop when the user no longer needs it.
+When a thread comes back, read it, do the work, POST your answer to its
+`/messages` endpoint, then re-issue the long-poll to keep listening.
+
+To stay responsive while you keep working, run the long-poll as a **background
+task** — you'll be notified the moment it returns with a question, and you can
+re-arm it after answering. Don't wrap this in `/loop` (its 60s-floor timer is
+both slower and noisier than the blocking call). If a call returns "connection
+refused", the broker isn't running — tell the user; don't retry in a tight loop.

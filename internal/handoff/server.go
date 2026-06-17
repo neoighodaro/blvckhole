@@ -7,9 +7,15 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
+	"time"
 )
 
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// maxWait caps how long a long-poll request may park a connection, so a client
+// cannot hold one open forever.
+const maxWait = 5 * time.Minute
 
 type createReq struct {
 	From    string `json:"from"`
@@ -72,13 +78,38 @@ func handleThreadPage(store *Store) http.HandlerFunc {
 
 func handleList(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		threads, err := store.All(r.URL.Query().Get("to"), r.URL.Query().Get("status"))
+		q := r.URL.Query()
+		threads, err := store.WaitFor(r.Context(), q.Get("to"), q.Get("status"), parseWait(q.Get("wait")))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Failed to load threads.")
 			return
 		}
 		writeJSON(w, http.StatusOK, threads)
 	}
+}
+
+// parseWait reads the long-poll ?wait value. It accepts a bare number of seconds
+// ("25") or a Go duration ("25s", "2m"). Anything invalid or non-positive means
+// no waiting; the result is capped at maxWait.
+func parseWait(v string) time.Duration {
+	if v == "" {
+		return 0
+	}
+	var d time.Duration
+	if n, err := strconv.Atoi(v); err == nil {
+		d = time.Duration(n) * time.Second
+	} else if pd, err := time.ParseDuration(v); err == nil {
+		d = pd
+	} else {
+		return 0
+	}
+	if d < 0 {
+		return 0
+	}
+	if d > maxWait {
+		d = maxWait
+	}
+	return d
 }
 
 func handleCreate(store *Store) http.HandlerFunc {

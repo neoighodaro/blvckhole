@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -301,6 +302,36 @@ func TestServer_BoardRefreshNotLogged(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/handoff/threads", nil))
 	if !strings.Contains(buf.String(), "GET /handoff/threads 200") {
 		t.Errorf("API GET should be logged, got: %q", buf.String())
+	}
+}
+
+func TestServer_LongPollWaitsForThread(t *testing.T) {
+	srv := newTestServer(t)
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		postJSON(t, srv.URL+"/handoff/threads", `{"from":"web","to":"api","subject":"s","body":"q"}`).Body.Close()
+	}()
+	resp, err := http.Get(srv.URL + "/handoff/threads?to=api&status=open&wait=2")
+	if err != nil {
+		t.Fatalf("long-poll GET: %v", err)
+	}
+	var list []Thread
+	decode(t, resp, &list)
+	if len(list) != 1 {
+		t.Fatalf("long poll should return the thread once it is posted, got %d", len(list))
+	}
+}
+
+func TestServer_LongPollTimesOutEmpty(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/handoff/threads?to=api&status=open&wait=500ms")
+	if err != nil {
+		t.Fatalf("long-poll GET: %v", err)
+	}
+	var list []Thread
+	decode(t, resp, &list)
+	if len(list) != 0 {
+		t.Errorf("long poll should return an empty list on timeout, got %d", len(list))
 	}
 }
 
