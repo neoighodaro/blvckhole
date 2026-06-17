@@ -8,6 +8,11 @@ description: Use to ask another blvckhole sandbox a question and get an answer, 
 Exchange threaded questions and answers with other blvckhole-managed sandboxes
 through a shared broker running on the host.
 
+Reach for this proactively: when something you're working on depends on another
+sandbox's domain — an interface or contract, a data shape, the meaning of a
+field, expected behavior — and it's ambiguous or you'd otherwise guess, open a
+thread and ask instead of assuming. A quick question beats a wrong assumption.
+
 - Your identity (`from`) is **`$BLVCKHOLE_SANDBOX`**.
 - The broker base URL is **`$BLVCKHOLE_HANDOFF_URL`** (e.g. `http://host.docker.internal:8787`).
 - Address other sandboxes by their **sandbox name** (the `name` in their `blvckhole.yaml`).
@@ -31,7 +36,9 @@ curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads" \
   -d "{\"from\":\"$BLVCKHOLE_SANDBOX\",\"to\":\"other-sandbox\",\"subject\":\"DB schema\",\"body\":\"What is the users table primary key?\"}"
 ```
 
-## See questions addressed to you (still open)
+## See questions addressed to you (immediate snapshot)
+
+Returns right away — use it for a one-shot check (e.g. at the start of a session):
 
 ```bash
 curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open"
@@ -57,13 +64,32 @@ curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID/messages" \
 curl -sS -X DELETE "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID"
 ```
 
-## Poll for incoming questions with /loop
+## Wait for incoming questions (long-poll)
 
-Watch for questions addressed to you and answer them:
+Add `wait=<seconds>` (max 300) to **block until** a matching thread appears
+instead of polling on a timer. The request returns the instant a question lands —
+or an empty `[]` when the wait elapses, at which point you just re-issue it. This
+is near-instant and far cheaper than a timed `/loop`, so prefer it.
 
+```bash
+# Blocks up to 5 minutes; returns immediately when a question for you arrives.
+curl -sS --max-time 310 "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open&wait=300"
 ```
-/loop 30s curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open"
-```
 
-When a thread appears, read it, do the work, and POST your answer to its
-`/messages` endpoint. Stop the loop when the user no longer needs it.
+When a thread comes back, read it, do the work, POST your answer to its
+`/messages` endpoint, then re-issue the long-poll to keep listening.
+
+To stay responsive while you keep working, run the long-poll as a **background
+task** — you'll be notified the moment it returns with a question, and you can
+re-arm it after answering. Don't wrap this in `/loop` (its 60s-floor timer is
+both slower and noisier than the blocking call). If a call returns "connection
+refused", the broker isn't running — tell the user; don't retry in a tight loop.
+
+## Answer in a background agent (don't block the user)
+
+The user may be actively working in this window, and investigating + answering a
+handoff can take a while. So **handle incoming handoffs in a background agent**
+whenever you can: dispatch a subagent with background execution to do the work
+and POST the reply, instead of doing it inline on the main thread. That keeps the
+session free for the user and lets several handoffs be answered in parallel. Only
+fall back to answering inline if background agents aren't available.

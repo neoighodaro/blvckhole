@@ -26,3 +26,16 @@ func TestHandoffFlagDefaults(t *testing.T) {
 		t.Errorf("--store default = %q, want empty", got)
 	}
 }
+
+func TestHandoffReplaceFlag(t *testing.T) {
+	f := handoffCmd.Flags().Lookup("replace")
+	if f == nil {
+		t.Fatal("--replace flag not registered")
+	}
+	if f.Shorthand != "R" {
+		t.Errorf("--replace shorthand = %q, want R", f.Shorthand)
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--replace default = %q, want false", f.DefValue)
+	}
+}

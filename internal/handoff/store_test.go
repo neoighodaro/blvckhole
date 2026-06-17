@@ -1,10 +1,12 @@
 package handoff
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -173,6 +175,46 @@ func TestStore_Delete(t *testing.T) {
 	}
 }
 
+func TestStore_Close(t *testing.T) {
+	s := newTestStore(t)
+	th, _ := s.Open("api", "web", "s", "b")
+	s.AddMessage(th.ID, "web", "answer") // -> answered
+
+	closed, err := s.Close(th.ID)
+	if err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+	if closed == nil || closed.Status != StatusClosed {
+		t.Fatalf("Close() = %+v, want status closed", closed)
+	}
+
+	found, _ := s.Find(th.ID)
+	if found == nil || found.Status != StatusClosed {
+		t.Errorf("after Close, persisted status = %+v, want closed", found)
+	}
+
+	missing, err := s.Close("nope")
+	if err != nil {
+		t.Fatalf("Close(missing) error: %v", err)
+	}
+	if missing != nil {
+		t.Errorf("Close(missing) = %+v, want nil", missing)
+	}
+}
+
+func TestStore_MessageReopensClosed(t *testing.T) {
+	s := newTestStore(t)
+	th, _ := s.Open("api", "web", "s", "b")
+	if _, err := s.Close(th.ID); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+	// Closing is not permanent: a new message re-derives the status.
+	reopened, _ := s.AddMessage(th.ID, "web", "actually, here's an update")
+	if reopened.Status != StatusAnswered {
+		t.Errorf("after message on a closed thread, status = %q, want answered", reopened.Status)
+	}
+}
+
 func TestStore_AllFilters(t *testing.T) {
 	s := newTestStore(t)
 	a, _ := s.Open("api", "web", "s1", "b") // open, to=web
@@ -214,6 +256,82 @@ func TestStore_ConcurrentOpensNoLostWrites(t *testing.T) {
 	threads, _ := s.All("", "")
 	if len(threads) != n {
 		t.Errorf("after %d concurrent opens, All() len = %d", n, len(threads))
+	}
+}
+
+func TestStore_WaitForReturnsImmediatelyWhenMatchExists(t *testing.T) {
+	s := newTestStore(t)
+	s.Open("web", "api", "s", "q") // open thread addressed to api
+	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 2*time.Second)
+	if err != nil {
+		t.Fatalf("WaitFor: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("WaitFor returned %d threads, want 1 immediately", len(got))
+	}
+}
+
+func TestStore_WaitForBlocksUntilThreadAppears(t *testing.T) {
+	s := newTestStore(t)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		s.Open("web", "api", "s", "q")
+	}()
+	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 2*time.Second)
+	if err != nil {
+		t.Fatalf("WaitFor: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("WaitFor returned %d threads, want 1 after the thread is opened mid-wait", len(got))
+	}
+}
+
+func TestStore_WaitForWakesOnFollowUp(t *testing.T) {
+	s := newTestStore(t)
+	th, _ := s.Open("web", "api", "s", "q") // to=api, open
+	s.AddMessage(th.ID, "api", "answer")    // api answers -> answered, no longer matches status=open
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		s.AddMessage(th.ID, "web", "follow up") // asker follows up -> reopens
+	}()
+	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 2*time.Second)
+	if err != nil {
+		t.Fatalf("WaitFor: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("a follow-up should reopen the thread and wake the waiter, got %d", len(got))
+	}
+}
+
+func TestStore_WaitForTimesOutEmpty(t *testing.T) {
+	s := newTestStore(t)
+	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 30*time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitFor: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("WaitFor should return empty on timeout, got %d", len(got))
+	}
+}
+
+func TestStore_WaitForZeroIsImmediate(t *testing.T) {
+	s := newTestStore(t)
+	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 0)
+	if err != nil {
+		t.Fatalf("WaitFor: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("WaitFor(0) should behave like All and return immediately, got %d", len(got))
+	}
+}
+
+func TestDefaultPidAndLogPath_XDG(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
+	if got, want := DefaultPidPath(), filepath.Join("/tmp/xdg", "blvckhole", "handoff", "handoff.pid"); got != want {
+		t.Errorf("DefaultPidPath() = %q, want %q", got, want)
+	}
+	if got, want := DefaultLogPath(), filepath.Join("/tmp/xdg", "blvckhole", "handoff", "handoff.log"); got != want {
+		t.Errorf("DefaultLogPath() = %q, want %q", got, want)
 	}
 }
 

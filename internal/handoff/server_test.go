@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -93,6 +94,60 @@ func TestServer_FullLoop(t *testing.T) {
 	decode(t, resp, &del)
 	if !del["deleted"] {
 		t.Error("delete response should be {\"deleted\":true}")
+	}
+}
+
+func TestServer_Close(t *testing.T) {
+	srv := newTestServer(t)
+	resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"closeme","body":"b"}`)
+	var created Thread
+	decode(t, resp, &created)
+
+	resp = postJSON(t, srv.URL+"/handoff/threads/"+created.ID+"/close", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("close status = %d, want 200", resp.StatusCode)
+	}
+	var closed Thread
+	decode(t, resp, &closed)
+	if closed.Status != StatusClosed {
+		t.Errorf("status after close = %q, want closed", closed.Status)
+	}
+
+	resp = postJSON(t, srv.URL+"/handoff/threads/missing/close", "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("close missing status = %d, want 404", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestServer_BoardHidesClosed(t *testing.T) {
+	srv := newTestServer(t)
+	resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"Hide me when closed","body":"b"}`)
+	var created Thread
+	decode(t, resp, &created)
+
+	board, _ := http.Get(srv.URL + "/handoff")
+	body, _ := io.ReadAll(board.Body)
+	board.Body.Close()
+	if !bytes.Contains(body, []byte("Hide me when closed")) {
+		t.Fatal("board should show the thread before it is closed")
+	}
+
+	postJSON(t, srv.URL+"/handoff/threads/"+created.ID+"/close", "").Body.Close()
+
+	board, _ = http.Get(srv.URL + "/handoff")
+	body, _ = io.ReadAll(board.Body)
+	board.Body.Close()
+	if bytes.Contains(body, []byte("Hide me when closed")) {
+		t.Error("board should hide closed threads")
+	}
+
+	// The API can still reach it explicitly.
+	resp, _ = http.Get(srv.URL + "/handoff/threads?status=closed")
+	var list []Thread
+	decode(t, resp, &list)
+	if len(list) != 1 {
+		t.Errorf("status=closed returned %d, want 1", len(list))
 	}
 }
 
@@ -189,6 +244,57 @@ func TestServer_BoardIsHTML(t *testing.T) {
 	}
 }
 
+func TestServer_BoardVariant(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/handoff?v=terminal")
+	if err != nil {
+		t.Fatalf("GET /handoff?v=terminal: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "handoff --watch") {
+		t.Error("?v=terminal should render the terminal variant")
+	}
+}
+
+func TestServer_ThreadPageIsHTML(t *testing.T) {
+	srv := newTestServer(t)
+	resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"Detail me","body":"the full body"}`)
+	var created Thread
+	decode(t, resp, &created)
+
+	resp, err := http.Get(srv.URL + "/handoff/thread/" + created.ID + "?v=terminal")
+	if err != nil {
+		t.Fatalf("GET thread page: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("thread page status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Errorf("thread page Content-Type = %q, want text/html", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !bytes.Contains(body, []byte("the full body")) {
+		t.Error("thread page should render the full message body")
+	}
+	if !bytes.Contains(body, []byte("handoff --thread")) {
+		t.Error("?v=terminal thread page should render the terminal variant")
+	}
+}
+
+func TestServer_ThreadPageNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/handoff/thread/missing")
+	if err != nil {
+		t.Fatalf("GET missing thread page: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestServer_GetThreadShape(t *testing.T) {
 	srv := newTestServer(t)
 	resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"shape","body":"q"}`)
@@ -250,6 +356,36 @@ func TestServer_BoardRefreshNotLogged(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/handoff/threads", nil))
 	if !strings.Contains(buf.String(), "GET /handoff/threads 200") {
 		t.Errorf("API GET should be logged, got: %q", buf.String())
+	}
+}
+
+func TestServer_LongPollWaitsForThread(t *testing.T) {
+	srv := newTestServer(t)
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		postJSON(t, srv.URL+"/handoff/threads", `{"from":"web","to":"api","subject":"s","body":"q"}`).Body.Close()
+	}()
+	resp, err := http.Get(srv.URL + "/handoff/threads?to=api&status=open&wait=2")
+	if err != nil {
+		t.Fatalf("long-poll GET: %v", err)
+	}
+	var list []Thread
+	decode(t, resp, &list)
+	if len(list) != 1 {
+		t.Fatalf("long poll should return the thread once it is posted, got %d", len(list))
+	}
+}
+
+func TestServer_LongPollTimesOutEmpty(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/handoff/threads?to=api&status=open&wait=500ms")
+	if err != nil {
+		t.Fatalf("long-poll GET: %v", err)
+	}
+	var list []Thread
+	decode(t, resp, &list)
+	if len(list) != 0 {
+		t.Errorf("long poll should return an empty list on timeout, got %d", len(list))
 	}
 }
 

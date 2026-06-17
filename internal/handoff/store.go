@@ -1,6 +1,7 @@
 package handoff
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -12,6 +13,7 @@ import (
 const (
 	StatusOpen     = "open"
 	StatusAnswered = "answered"
+	StatusClosed   = "closed"
 )
 
 type Message struct {
@@ -41,14 +43,42 @@ type fileData struct {
 type Store struct {
 	path string
 	mu   sync.Mutex
+
+	// notifyCh is closed (and replaced) every time the store changes, so
+	// long-poll waiters can block until something happens. It is guarded by its
+	// own mutex to keep it independent of the data lock.
+	notifyMu sync.Mutex
+	notifyCh chan struct{}
 }
 
 func NewStore(path string) *Store {
 	return &Store{path: path}
 }
 
-// DefaultStorePath resolves the shared host store path.
-func DefaultStorePath() string {
+// subscribe returns a channel that is closed the next time the store changes.
+// Callers must grab it before reading state so a concurrent mutation cannot slip
+// in between the read and the wait.
+func (s *Store) subscribe() <-chan struct{} {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	if s.notifyCh == nil {
+		s.notifyCh = make(chan struct{})
+	}
+	return s.notifyCh
+}
+
+// broadcast wakes every current subscriber.
+func (s *Store) broadcast() {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	if s.notifyCh != nil {
+		close(s.notifyCh)
+		s.notifyCh = nil
+	}
+}
+
+// handoffDir resolves the shared host config directory for the broker.
+func handoffDir() string {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
@@ -57,8 +87,17 @@ func DefaultStorePath() string {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "blvckhole", "handoff", "handoff.json")
+	return filepath.Join(base, "blvckhole", "handoff")
 }
+
+// DefaultStorePath resolves the shared host store path.
+func DefaultStorePath() string { return filepath.Join(handoffDir(), "handoff.json") }
+
+// DefaultPidPath is where a backgrounded broker records its PID.
+func DefaultPidPath() string { return filepath.Join(handoffDir(), "handoff.pid") }
+
+// DefaultLogPath is where a backgrounded broker writes its output.
+func DefaultLogPath() string { return filepath.Join(handoffDir(), "handoff.log") }
 
 // load reads the store, tolerating a missing or malformed file as empty.
 func (s *Store) load() ([]Thread, error) {
@@ -133,6 +172,32 @@ func (s *Store) All(filterTo, filterStatus string) ([]Thread, error) {
 	return result, nil
 }
 
+// WaitFor is a long-poll All: with wait <= 0 it returns immediately, otherwise it
+// blocks up to wait for at least one matching thread to appear. It re-queries on
+// every store change, so a thread created mid-wait returns right away; on timeout
+// (or a cancelled ctx) it returns the current — empty — result.
+func (s *Store) WaitFor(ctx context.Context, filterTo, filterStatus string, wait time.Duration) ([]Thread, error) {
+	if wait <= 0 {
+		return s.All(filterTo, filterStatus)
+	}
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	for {
+		// Subscribe before reading so a mutation between the read and the select
+		// cannot be missed.
+		ch := s.subscribe()
+		threads, err := s.All(filterTo, filterStatus)
+		if err != nil || len(threads) > 0 {
+			return threads, err
+		}
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return threads, nil
+		}
+	}
+}
+
 func (s *Store) Find(id string) (*Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -171,6 +236,7 @@ func (s *Store) Open(from, to, subject, body string) (*Thread, error) {
 	if err := s.save(threads); err != nil {
 		return nil, err
 	}
+	s.broadcast()
 	return &t, nil
 }
 
@@ -196,6 +262,32 @@ func (s *Store) AddMessage(id, from, body string) (*Thread, error) {
 			if err := s.save(threads); err != nil {
 				return nil, err
 			}
+			s.broadcast()
+			t := threads[i]
+			return &t, nil
+		}
+	}
+	return nil, nil
+}
+
+// Close marks a thread as manually closed so it drops off the board. It is not
+// a permanent state: a later message re-derives the status in AddMessage, so a
+// follow-up or answer reopens the thread. Returns the updated thread, or nil if
+// no thread has the id.
+func (s *Store) Close(id string) (*Thread, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	threads, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	for i := range threads {
+		if threads[i].ID == id {
+			threads[i].Status = StatusClosed
+			if err := s.save(threads); err != nil {
+				return nil, err
+			}
+			s.broadcast()
 			t := threads[i]
 			return &t, nil
 		}
