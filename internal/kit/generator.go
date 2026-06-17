@@ -137,6 +137,26 @@ func writeKitFiles(cfg *config.Config, kitDir string) error {
 		return err
 	}
 
+	// Write the embedded handoff skill AFTER copySkills so the version-matched
+	// embedded copy wins over any stale home copy. copySkills may have
+	// early-returned without creating skills/, so this creates its own dir.
+	if cfg.Handoff.Enabled {
+		if err := writeHandoffSkill(claudeDir); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeHandoffSkill(claudeDir string) error {
+	dir := filepath.Join(claudeDir, "skills", "sandbox-handoff")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create sandbox-handoff skill directory: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), embedded.SandboxHandoffMD, 0644); err != nil {
+		return fmt.Errorf("failed to write sandbox-handoff skill: %w", err)
+	}
 	return nil
 }
 

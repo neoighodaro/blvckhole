@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,6 +62,11 @@ type ZellijConfig struct {
 	DisplayName string `yaml:"display_name"`
 }
 
+type HandoffConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	URL     string `yaml:"url"`
+}
+
 // ScriptsConfig holds commands run inside the sandbox at lifecycle points.
 //
 //	OnCreate runs once, right after the sandbox is created.
@@ -90,6 +96,7 @@ type Config struct {
 	Php       PhpConfig         `yaml:"php"`
 	Zellij    ZellijConfig      `yaml:"zellij"`
 	Memory    string            `yaml:"memory"`
+	Handoff   HandoffConfig     `yaml:"handoff"`
 
 	MergedEnv             map[string]string `yaml:"-"`
 	ProjectDir            string            `yaml:"-"`
@@ -134,6 +141,10 @@ func Parse(path string, projectDir string) (*Config, error) {
 	}
 	if cfg.Agent == "" {
 		cfg.Agent = "claude-code"
+	}
+
+	if cfg.Handoff.Enabled && cfg.Handoff.URL == "" {
+		cfg.Handoff.URL = "http://host.docker.internal:8787"
 	}
 
 	// Deprecated 'startup:' is an alias for 'scripts.on_create' — fold it in
@@ -211,6 +222,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if c.Handoff.Enabled {
+		u, err := url.Parse(c.Handoff.URL)
+		if err != nil || u.Host == "" || u.Port() == "" {
+			return fmt.Errorf("invalid handoff.url %q: must be a URL with host and port", c.Handoff.URL)
+		}
+	}
+
 	return nil
 }
 
@@ -241,4 +259,14 @@ func (c *Config) SandboxImageName() string {
 // KitDir returns the path to the kit directory inside the project config.
 func (c *Config) KitDir() string {
 	return filepath.Join(c.ProjectDir, ".config", "blvckhole", ".kit")
+}
+
+// HandoffPort returns the port from the configured handoff URL, or "" if it
+// cannot be parsed.
+func (c *Config) HandoffPort() string {
+	u, err := url.Parse(c.Handoff.URL)
+	if err != nil {
+		return ""
+	}
+	return u.Port()
 }

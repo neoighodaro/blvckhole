@@ -101,6 +101,11 @@ func runStart(cfg *config.Config) error {
 		}
 	}
 
+	if cfg.Handoff.Enabled {
+		cfg.MergedEnv["BLVCKHOLE_SANDBOX"] = cfg.Name
+		cfg.MergedEnv["BLVCKHOLE_HANDOFF_URL"] = cfg.Handoff.URL
+	}
+
 	fmt.Println(ui.Accent.Render("Generating kit..."))
 	if err := kit.Generate(cfg, kitDir); err != nil {
 		return err
@@ -129,6 +134,14 @@ func runStart(cfg *config.Config) error {
 		fmt.Println(ui.Accent.Render("Applying network whitelist..."))
 		if err := sandbox.AllowNetwork(cfg.Name, cfg.Network); err != nil {
 			return fmt.Errorf("failed to set network policy: %w", err)
+		}
+	}
+
+	if cfg.Handoff.Enabled {
+		resource := "localhost:" + cfg.HandoffPort()
+		fmt.Println(ui.Accent.Render("Allowing handoff broker (" + resource + ")..."))
+		if err := sandbox.AllowNetwork(cfg.Name, []string{resource}); err != nil {
+			return fmt.Errorf("failed to allow handoff broker network: %w", err)
 		}
 	}
 
