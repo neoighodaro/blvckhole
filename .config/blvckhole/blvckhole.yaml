@@ -6,9 +6,13 @@ zellij:
 
 packages:
   - ripgrep
-
+  - unzip
+  - xz-utils
+  - ripgrep
 runtimes:
   go: "1.26.4"
+  node: "22" # needed by context7
+  python: "3.12" # needed by security-guidance
 
 network:
   - "proxy.golang.org"
@@ -24,11 +28,30 @@ handoff:
 scripts:
   on_create:
     - "go mod download"
-
+    - sudo sh -c 'curl -fsSL "https://github.com/max-sixty/worktrunk/releases/latest/download/worktrunk-$(uname -m)-unknown-linux-musl.tar.xz" | tar -xJ --strip-components=1 -C /usr/local/bin/ && chmod +x /usr/local/bin/wt' || true
+    - sudo ln -sf "$(pwd)/yulo" /usr/local/bin/yulo
+    - |
+      grep -q 'LC_ALL=C.utf8' /etc/sandbox-persistent.sh ||
+        sudo sh -c 'printf "export LANG=C.utf8\nexport LC_ALL=C.utf8\n" >> /etc/sandbox-persistent.sh'
 claude:
+  plugins:
+    marketplaces:
+      - anthropics/claude-plugins-official
+      - uppinote20/claude-dashboard
+      - anthropics/claude-code
+      - max-sixty/worktrunk
+    install:
+      - superpowers@claude-plugins-official
+      - claude-dashboard@claude-dashboard
+      - commit-commands@claude-code-plugins
+      - security-guidance@claude-plugins-official
+      - worktrunk@worktrunk
   settings:
-    tui: "default"
-    model: "claude-opus-4-8"
+    tui: default
+    alwaysThinkingEnabled: true
+    skipDangerousModePermissionPrompt: true
+    defaultMode: bypassPermissions
+    bypassPermissionsModeAccepted: true
 
 memory: |
   This is the blvckhole project itself — a CLI tool that creates and manages

@@ -176,7 +176,7 @@ const missionStyle = `
 :root{
   --bg:#070b14; --panel:#0d1524; --panel2:#0b1220; --line:#1a2740;
   --ink:#dce6f5; --muted:#8a9bbd; --faint:#566889;
-  --open:#f5c451; --answered:#46e0a0; --cyan:#5cc8ff;
+  --open:#f5c451; --answered:#46e0a0; --cyan:#5cc8ff; --closed:#7486a8;
   --disp:"Chakra Petch", ui-sans-serif, system-ui, sans-serif;
   --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
@@ -208,12 +208,16 @@ body{
 .thread{position:relative; width:100%; background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-left:3px solid var(--faint); border-radius:12px; margin-bottom:16px; overflow:hidden}
 .thread.open{border-left-color:var(--open)}
 .thread.answered{border-left-color:var(--answered)}
+.thread.closed{border-left-color:var(--closed)}
 summary.thead{display:block; padding:15px 18px 10px; cursor:pointer; list-style:none; outline-offset:-2px; -webkit-user-select:none; user-select:none}
 summary.thead::-webkit-details-marker{display:none}
 summary.thead:hover .subject{color:#fff}
 .thead-row{display:flex; align-items:flex-start; gap:11px}
 .chev{flex:0 0 auto; padding-top:3px; color:var(--faint); font-size:12px; transition:transform .15s}
 .thread[open] .chev{transform:rotate(90deg); color:var(--muted)}
+.close-btn{flex:0 0 auto; margin-top:-1px; padding:2px 6px; background:none; border:0; border-radius:6px; color:var(--faint); font-family:var(--mono); font-size:13px; line-height:1.2; cursor:pointer; transition:.15s}
+.close-btn:hover{color:#ff8a8a; background:rgba(255,138,138,.12)}
+.close-btn:disabled{opacity:.4; cursor:default}
 .thread-main{padding:0 18px 16px; min-width:0}
 .subject{flex:1; min-width:0; font-family:var(--disp); font-weight:600; font-size:16px; margin:0; color:#eef4ff}
 .status{font-size:11px; text-transform:uppercase; letter-spacing:.15em; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; padding-top:3px}
@@ -222,6 +226,8 @@ summary.thead:hover .subject{color:#fff}
 .thread.open .led{background:var(--open); box-shadow:0 0 10px var(--open)}
 .thread.answered .status{color:var(--answered)}
 .thread.answered .led{background:var(--answered); box-shadow:0 0 10px var(--answered)}
+.thread.closed .status{color:var(--closed)}
+.thread.closed .led{background:var(--closed); box-shadow:0 0 10px var(--closed)}
 .sub{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:0; font-size:11.5px; color:var(--muted)}
 .sub .route{color:var(--cyan)}
 .sub .id{color:var(--faint)}
@@ -255,6 +261,8 @@ summary.thead:hover .subject{color:#fff}
 .dhead.open .led{background:var(--open); box-shadow:0 0 10px var(--open)}
 .dhead.answered .status{color:var(--answered)}
 .dhead.answered .led{background:var(--answered); box-shadow:0 0 10px var(--answered)}
+.dhead.closed .status{color:var(--closed)}
+.dhead.closed .led{background:var(--closed); box-shadow:0 0 10px var(--closed)}
 .dmsgs{list-style:none; margin:0; padding:0}
 .dmsg{border:1px solid var(--line); border-left:3px solid var(--faint); border-radius:10px; padding:14px 17px; margin-bottom:14px; background:linear-gradient(180deg,var(--panel),var(--panel2))}
 .dmsg.asker{border-left-color:var(--cyan)}
@@ -294,6 +302,7 @@ const missionTmpl = `<!DOCTYPE html>
         <h2 class="subject">{{.Subject}}</h2>
         <span class="status"><i class="led"></i>{{.Status}}</span>
         <span class="chev" aria-hidden="true">▸</span>
+        <button type="button" class="close-btn" aria-label="close thread" title="close thread">✕</button>
       </div>
     </summary>
     <div class="thread-main">
@@ -336,6 +345,24 @@ const missionTmpl = `<!DOCTYPE html>
     d.addEventListener('toggle', function () {
       if (!store) return;
       try { store.setItem(KEY + id, d.open ? '1' : '0'); } catch (e) {}
+    });
+  });
+  document.querySelectorAll('button.close-btn').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      // Don't let the click toggle the surrounding <summary>.
+      e.preventDefault();
+      e.stopPropagation();
+      var d = btn.closest('details.thread');
+      if (!d) return;
+      var id = d.getAttribute('data-thread');
+      btn.disabled = true;
+      fetch('/handoff/threads/' + encodeURIComponent(id) + '/close', { method: 'POST' })
+        .then(function (res) {
+          if (!res.ok) { btn.disabled = false; return; }
+          if (store) { try { store.removeItem(KEY + id); } catch (e) {} }
+          d.remove();
+        })
+        .catch(function () { btn.disabled = false; });
     });
   });
 })();
@@ -425,6 +452,9 @@ body::after{content:""; position:fixed; inset:0; pointer-events:none; z-index:51
 .thr-head .tag{margin-left:auto; font-weight:700; text-transform:uppercase; letter-spacing:.1em; font-size:11px}
 .thr.open .tag{color:var(--amber)}
 .thr.answered .tag{color:var(--ink)}
+.thr-close{padding:0 2px; background:none; border:0; color:var(--faint); font-family:inherit; font-size:12px; cursor:pointer}
+.thr-close:hover{color:#ff8a8a}
+.thr-close:disabled{opacity:.4; cursor:default}
 .thr-meta{color:var(--faint); font-size:11px; margin:6px 0 10px}
 .moreln{color:var(--faint); font-size:11px; margin-bottom:6px}
 .line{padding:2px 0; color:var(--white)}
@@ -464,12 +494,13 @@ const terminalTmpl = `<!DOCTYPE html>
   <div class="prompt"><span class="user">blvckhole@host</span>:<span class="path">~</span>$ handoff --watch<span class="cursor"></span></div>
   <div class="statusline">[ {{.Count}} threads · live · {{.Now}} ]</div>
   {{range .Threads}}
-  <section class="thr {{.Status}}">
+  <section class="thr {{.Status}}" data-thread="{{.ID}}">
     <div class="thr-head">
       <span class="bullet">▌</span>
       <span class="subj">{{.Subject}}</span>
       <span class="route">{{.From}}→{{.To}}</span>
       <span class="tag">[{{.Status}}]</span>
+      <button type="button" class="thr-close" aria-label="close thread" title="close thread">[x]</button>
     </div>
     <div class="thr-meta">id:{{.ID}} · {{.Count}} msg · {{.Updated}}</div>
     {{if .More}}<div class="moreln">… +{{.More}} earlier message{{if gt .More 1}}s{{end}}</div>{{end}}
@@ -483,6 +514,24 @@ const terminalTmpl = `<!DOCTYPE html>
   {{end}}
   {{template "switcher" .}}
 </div>
+<script>
+(function () {
+  document.querySelectorAll('button.thr-close').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var sec = btn.closest('section.thr');
+      if (!sec) return;
+      var id = sec.getAttribute('data-thread');
+      btn.disabled = true;
+      fetch('/handoff/threads/' + encodeURIComponent(id) + '/close', { method: 'POST' })
+        .then(function (res) {
+          if (!res.ok) { btn.disabled = false; return; }
+          sec.remove();
+        })
+        .catch(function () { btn.disabled = false; });
+    });
+  });
+})();
+</script>
 </body>
 </html>`
 

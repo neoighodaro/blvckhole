@@ -13,6 +13,7 @@ import (
 const (
 	StatusOpen     = "open"
 	StatusAnswered = "answered"
+	StatusClosed   = "closed"
 )
 
 type Message struct {
@@ -258,6 +259,31 @@ func (s *Store) AddMessage(id, from, body string) (*Thread, error) {
 				threads[i].Status = StatusAnswered
 			}
 			threads[i].UpdatedAt = now
+			if err := s.save(threads); err != nil {
+				return nil, err
+			}
+			s.broadcast()
+			t := threads[i]
+			return &t, nil
+		}
+	}
+	return nil, nil
+}
+
+// Close marks a thread as manually closed so it drops off the board. It is not
+// a permanent state: a later message re-derives the status in AddMessage, so a
+// follow-up or answer reopens the thread. Returns the updated thread, or nil if
+// no thread has the id.
+func (s *Store) Close(id string) (*Thread, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	threads, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	for i := range threads {
+		if threads[i].ID == id {
+			threads[i].Status = StatusClosed
 			if err := s.save(threads); err != nil {
 				return nil, err
 			}

@@ -73,6 +73,46 @@ func TestRenderBoard_AnsweredCollapsedByDefault(t *testing.T) {
 	}
 }
 
+// TestRenderBoard_CloseButtonOnEveryThread verifies the ✕ close control is
+// rendered on every card regardless of status, so any thread can be closed.
+func TestRenderBoard_CloseButtonOnEveryThread(t *testing.T) {
+	mixed := []Thread{
+		{ID: "o", From: "api", To: "web", Subject: "open one", Status: StatusOpen},
+		{ID: "a", From: "api", To: "web", Subject: "answered one", Status: StatusAnswered},
+	}
+	var b strings.Builder
+	if err := RenderBoard(&b, mixed, "mission"); err != nil {
+		t.Fatalf("RenderBoard: %v", err)
+	}
+	if got := strings.Count(b.String(), `class="close-btn"`); got != 2 {
+		t.Errorf("close-btn count = %d on a mixed board, want 2 (one per thread)", got)
+	}
+
+	var openOnly strings.Builder
+	if err := RenderBoard(&openOnly, []Thread{{ID: "o", Subject: "open", Status: StatusOpen}}, "mission"); err != nil {
+		t.Fatalf("RenderBoard: %v", err)
+	}
+	if !strings.Contains(openOnly.String(), `class="close-btn"`) {
+		t.Error("an open-only board should still render a close button")
+	}
+}
+
+// TestRenderBoard_TerminalCloseButton verifies the terminal variant also
+// renders a close control on every thread.
+func TestRenderBoard_TerminalCloseButton(t *testing.T) {
+	mixed := []Thread{
+		{ID: "o", From: "api", To: "web", Subject: "open one", Status: StatusOpen},
+		{ID: "a", From: "api", To: "web", Subject: "answered one", Status: StatusAnswered},
+	}
+	var b strings.Builder
+	if err := RenderBoard(&b, mixed, "terminal"); err != nil {
+		t.Fatalf("RenderBoard: %v", err)
+	}
+	if got := strings.Count(b.String(), `class="thr-close"`); got != 2 {
+		t.Errorf("thr-close count = %d on a mixed terminal board, want 2 (one per thread)", got)
+	}
+}
+
 func TestRenderBoard_NewestFirst(t *testing.T) {
 	threads := []Thread{
 		{ID: "old", Subject: "older"},

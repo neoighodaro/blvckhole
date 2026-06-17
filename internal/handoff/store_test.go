@@ -175,6 +175,46 @@ func TestStore_Delete(t *testing.T) {
 	}
 }
 
+func TestStore_Close(t *testing.T) {
+	s := newTestStore(t)
+	th, _ := s.Open("api", "web", "s", "b")
+	s.AddMessage(th.ID, "web", "answer") // -> answered
+
+	closed, err := s.Close(th.ID)
+	if err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+	if closed == nil || closed.Status != StatusClosed {
+		t.Fatalf("Close() = %+v, want status closed", closed)
+	}
+
+	found, _ := s.Find(th.ID)
+	if found == nil || found.Status != StatusClosed {
+		t.Errorf("after Close, persisted status = %+v, want closed", found)
+	}
+
+	missing, err := s.Close("nope")
+	if err != nil {
+		t.Fatalf("Close(missing) error: %v", err)
+	}
+	if missing != nil {
+		t.Errorf("Close(missing) = %+v, want nil", missing)
+	}
+}
+
+func TestStore_MessageReopensClosed(t *testing.T) {
+	s := newTestStore(t)
+	th, _ := s.Open("api", "web", "s", "b")
+	if _, err := s.Close(th.ID); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+	// Closing is not permanent: a new message re-derives the status.
+	reopened, _ := s.AddMessage(th.ID, "web", "actually, here's an update")
+	if reopened.Status != StatusAnswered {
+		t.Errorf("after message on a closed thread, status = %q, want answered", reopened.Status)
+	}
+}
+
 func TestStore_AllFilters(t *testing.T) {
 	s := newTestStore(t)
 	a, _ := s.Open("api", "web", "s1", "b") // open, to=web

@@ -38,6 +38,7 @@ func NewServer(store *Store) http.Handler {
 	mux.HandleFunc("POST /handoff/threads", handleCreate(store))
 	mux.HandleFunc("GET /handoff/threads/{id}", handleGet(store))
 	mux.HandleFunc("POST /handoff/threads/{id}/messages", handleMessage(store))
+	mux.HandleFunc("POST /handoff/threads/{id}/close", handleClose(store))
 	mux.HandleFunc("DELETE /handoff/threads/{id}", handleDelete(store))
 	return withLogging(mux)
 }
@@ -50,8 +51,17 @@ func handleBoard(store *Store) http.HandlerFunc {
 			http.Error(w, "Failed to load threads.", http.StatusInternalServerError)
 			return
 		}
+		// The board shows live work; closed threads drop off it (still reachable
+		// by direct URL and via the API with ?status=closed).
+		active := threads[:0]
+		for _, t := range threads {
+			if t.Status == StatusClosed {
+				continue
+			}
+			active = append(active, t)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := RenderBoard(w, threads, r.URL.Query().Get("v")); err != nil {
+		if err := RenderBoard(w, active, r.URL.Query().Get("v")); err != nil {
 			log.Printf("board render error: %v", err)
 		}
 	}
@@ -173,6 +183,21 @@ func handleMessage(store *Store) http.HandlerFunc {
 		thread, err := store.AddMessage(r.PathValue("id"), req.From, req.Body)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Failed to add message.")
+			return
+		}
+		if thread == nil {
+			writeError(w, http.StatusNotFound, "Thread not found.")
+			return
+		}
+		writeJSON(w, http.StatusOK, thread)
+	}
+}
+
+func handleClose(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		thread, err := store.Close(r.PathValue("id"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to close thread.")
 			return
 		}
 		if thread == nil {
