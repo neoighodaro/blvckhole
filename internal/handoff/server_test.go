@@ -189,6 +189,57 @@ func TestServer_BoardIsHTML(t *testing.T) {
 	}
 }
 
+func TestServer_BoardVariant(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/handoff?v=terminal")
+	if err != nil {
+		t.Fatalf("GET /handoff?v=terminal: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "handoff --watch") {
+		t.Error("?v=terminal should render the terminal variant")
+	}
+}
+
+func TestServer_ThreadPageIsHTML(t *testing.T) {
+	srv := newTestServer(t)
+	resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"Detail me","body":"the full body"}`)
+	var created Thread
+	decode(t, resp, &created)
+
+	resp, err := http.Get(srv.URL + "/handoff/thread/" + created.ID + "?v=terminal")
+	if err != nil {
+		t.Fatalf("GET thread page: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("thread page status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Errorf("thread page Content-Type = %q, want text/html", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !bytes.Contains(body, []byte("the full body")) {
+		t.Error("thread page should render the full message body")
+	}
+	if !bytes.Contains(body, []byte("handoff --thread")) {
+		t.Error("?v=terminal thread page should render the terminal variant")
+	}
+}
+
+func TestServer_ThreadPageNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/handoff/thread/missing")
+	if err != nil {
+		t.Fatalf("GET missing thread page: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestServer_GetThreadShape(t *testing.T) {
 	srv := newTestServer(t)
 	resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"shape","body":"q"}`)

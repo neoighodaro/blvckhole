@@ -27,6 +27,7 @@ type messageReq struct {
 func NewServer(store *Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /handoff", handleBoard(store))
+	mux.HandleFunc("GET /handoff/thread/{id}", handleThreadPage(store))
 	mux.HandleFunc("GET /handoff/threads", handleList(store))
 	mux.HandleFunc("POST /handoff/threads", handleCreate(store))
 	mux.HandleFunc("GET /handoff/threads/{id}", handleGet(store))
@@ -44,8 +45,27 @@ func handleBoard(store *Store) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := RenderBoard(w, threads); err != nil {
+		if err := RenderBoard(w, threads, r.URL.Query().Get("v")); err != nil {
 			log.Printf("board render error: %v", err)
+		}
+	}
+}
+
+func handleThreadPage(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		thread, err := store.Find(r.PathValue("id"))
+		if err != nil {
+			// HTML endpoint; don't answer it with a JSON body.
+			http.Error(w, "Failed to load thread.", http.StatusInternalServerError)
+			return
+		}
+		if thread == nil {
+			http.Error(w, "Thread not found.", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := RenderThread(w, *thread, r.URL.Query().Get("v")); err != nil {
+			log.Printf("thread render error: %v", err)
 		}
 	}
 }
