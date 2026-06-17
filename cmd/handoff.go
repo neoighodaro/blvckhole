@@ -21,11 +21,12 @@ import (
 )
 
 var (
-	handoffPort   int
-	handoffBind   string
-	handoffStore  string
-	handoffDaemon bool
-	handoffKill   bool
+	handoffPort    int
+	handoffBind    string
+	handoffStore   string
+	handoffDaemon  bool
+	handoffKill    bool
+	handoffReplace bool
 )
 
 var handoffCmd = &cobra.Command{
@@ -33,7 +34,8 @@ var handoffCmd = &cobra.Command{
 	Short: "Run the cross-sandbox handoff broker",
 	Long: "Run the cross-sandbox handoff broker.\n\n" +
 		"By default it runs in the foreground and stops when you close the terminal.\n" +
-		"Use --daemon to run it in the background, and --kill to stop a running one.",
+		"Use --daemon to run it in the background, --kill to stop a running one, and\n" +
+		"--replace to stop any running broker first and start a fresh one.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pidPath := handoff.DefaultPidPath()
 
@@ -41,10 +43,20 @@ var handoffCmd = &cobra.Command{
 			return killBroker(pidPath)
 		}
 
+		// --replace stops a running broker first, then starts a fresh one in
+		// whatever mode the other flags request (foreground or --daemon).
+		if handoffReplace {
+			if pid, err := readPidFile(pidPath); err == nil && processAlive(pid) {
+				if err := killBroker(pidPath); err != nil {
+					return err
+				}
+			}
+		}
+
 		// Refuse to start a second broker; they would fight over the same port and
 		// clobber each other's pid file.
 		if pid, err := readPidFile(pidPath); err == nil && processAlive(pid) {
-			return fmt.Errorf("a handoff broker is already running (pid %d); stop it with `blvckhole handoff --kill`", pid)
+			return fmt.Errorf("a handoff broker is already running (pid %d); stop it with `blvckhole handoff --kill` or restart it with `--replace`", pid)
 		}
 
 		if handoffDaemon {
@@ -207,6 +219,7 @@ func init() {
 	handoffCmd.Flags().IntVarP(&handoffPort, "port", "P", 8787, "port for the handoff broker")
 	handoffCmd.Flags().BoolVarP(&handoffDaemon, "daemon", "D", false, "run the broker in the background")
 	handoffCmd.Flags().BoolVarP(&handoffKill, "kill", "K", false, "stop a running background broker")
+	handoffCmd.Flags().BoolVarP(&handoffReplace, "replace", "R", false, "stop a running broker first, then start a new one")
 	handoffCmd.Flags().StringVar(&handoffBind, "bind", "127.0.0.1", "bind address (loopback by default)")
 	handoffCmd.Flags().StringVar(&handoffStore, "store", "", "override the store path (default: XDG/HOME config)")
 	rootCmd.AddCommand(handoffCmd)
