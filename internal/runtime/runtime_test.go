@@ -48,11 +48,17 @@ func TestBunRuntime_EnvBlock(t *testing.T) {
 	}
 }
 
-func TestPythonRuntime_RootBlock(t *testing.T) {
+func TestPythonRuntime_AgentBlock(t *testing.T) {
 	r := Get("python")
-	block := r.RootBlock("3.12")
-	if !strings.Contains(block, "python3.12") {
-		t.Errorf("expected python3.12 in root block, got:\n%s", block)
+	if block := r.RootBlock("3.12"); block != "" {
+		t.Errorf("expected empty root block (python installs via uv in agent block), got:\n%s", block)
+	}
+	block := r.AgentBlock("3.12")
+	if !strings.Contains(block, "astral.sh/uv/install.sh") {
+		t.Errorf("expected uv installer in agent block, got:\n%s", block)
+	}
+	if !strings.Contains(block, "uv python install 3.12 --default") {
+		t.Errorf("expected pinned python install in agent block, got:\n%s", block)
 	}
 }
 
