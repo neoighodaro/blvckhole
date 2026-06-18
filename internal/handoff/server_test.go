@@ -73,15 +73,15 @@ func TestServer_FullLoop(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// answer -> status flips to answered
-	resp = postJSON(t, srv.URL+"/handoff/threads/"+created.ID+"/messages", `{"from":"web","body":"bigint id"}`)
+	// answer with explicit resolve -> answered, no waiting party
+	resp = postJSON(t, srv.URL+"/handoff/threads/"+created.ID+"/messages", `{"from":"web","body":"bigint id","status":"answered"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("message status = %d, want 200", resp.StatusCode)
 	}
 	var answered Thread
 	decode(t, resp, &answered)
-	if answered.Status != StatusAnswered {
-		t.Errorf("status after answer = %q, want answered", answered.Status)
+	if answered.Status != StatusAnswered || answered.WaitingOn != "" {
+		t.Errorf("after resolve: status=%q waiting_on=%q, want answered/\"\"", answered.Status, answered.WaitingOn)
 	}
 
 	// delete
@@ -94,6 +94,55 @@ func TestServer_FullLoop(t *testing.T) {
 	decode(t, resp, &del)
 	if !del["deleted"] {
 		t.Error("delete response should be {\"deleted\":true}")
+	}
+}
+
+func TestServer_ReplyIntent(t *testing.T) {
+	srv := newTestServer(t)
+	create := func(t *testing.T) string {
+		t.Helper()
+		resp := postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"s","body":"q"}`)
+		var th Thread
+		decode(t, resp, &th)
+		return th.ID
+	}
+
+	// waiting_on hands the ball; thread stays open.
+	id := create(t)
+	resp := postJSON(t, srv.URL+"/handoff/threads/"+id+"/messages", `{"from":"web","body":"clarify?","waiting_on":"api"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("waiting_on reply status = %d, want 200", resp.StatusCode)
+	}
+	var handed Thread
+	decode(t, resp, &handed)
+	if handed.Status != StatusOpen || handed.WaitingOn != "api" {
+		t.Errorf("waiting_on reply: status=%q waiting_on=%q, want open/api", handed.Status, handed.WaitingOn)
+	}
+
+	// Rejections: neither field, both fields, bad status value, bad waiting_on name.
+	rejects := []struct {
+		name, body, field string
+	}{
+		{"neither", `{"from":"web","body":"hi"}`, "waiting_on"},
+		{"both", `{"from":"web","body":"hi","waiting_on":"api","status":"answered"}`, "waiting_on"},
+		{"bad status", `{"from":"web","body":"hi","status":"open"}`, "status"},
+		{"bad waiting_on", `{"from":"web","body":"hi","waiting_on":"Bad_Name"}`, "waiting_on"},
+	}
+	for _, tc := range rejects {
+		t.Run(tc.name, func(t *testing.T) {
+			id := create(t)
+			resp := postJSON(t, srv.URL+"/handoff/threads/"+id+"/messages", tc.body)
+			if resp.StatusCode != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422", resp.StatusCode)
+			}
+			var body struct {
+				Errors map[string][]string `json:"errors"`
+			}
+			decode(t, resp, &body)
+			if len(body.Errors[tc.field]) == 0 {
+				t.Errorf("expected error on field %q, got %+v", tc.field, body.Errors)
+			}
+		})
 	}
 }
 
@@ -142,12 +191,12 @@ func TestServer_BoardHidesClosed(t *testing.T) {
 		t.Error("board should hide closed threads")
 	}
 
-	// The API can still reach it explicitly.
-	resp, _ = http.Get(srv.URL + "/handoff/threads?status=closed")
+	// The closed thread is gone from the board but still in the API's full list.
+	resp, _ = http.Get(srv.URL + "/handoff/threads")
 	var list []Thread
 	decode(t, resp, &list)
 	if len(list) != 1 {
-		t.Errorf("status=closed returned %d, want 1", len(list))
+		t.Errorf("unfiltered list returned %d, want 1 (closed thread still present)", len(list))
 	}
 }
 
@@ -197,16 +246,16 @@ func TestServer_ValidationErrors(t *testing.T) {
 	}
 }
 
-func TestServer_Filters(t *testing.T) {
+func TestServer_WaitingOnFilter(t *testing.T) {
 	srv := newTestServer(t)
 	postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"s1","body":"b"}`).Body.Close()
 	postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"db","subject":"s2","body":"b"}`).Body.Close()
 
-	resp, _ := http.Get(srv.URL + "/handoff/threads?to=db")
+	resp, _ := http.Get(srv.URL + "/handoff/threads?waiting_on=db")
 	var list []Thread
 	decode(t, resp, &list)
 	if len(list) != 1 || list[0].To != "db" {
-		t.Errorf("filter to=db returned %d threads", len(list))
+		t.Errorf("filter waiting_on=db returned %d threads, want 1", len(list))
 	}
 }
 
@@ -365,7 +414,7 @@ func TestServer_LongPollWaitsForThread(t *testing.T) {
 		time.Sleep(30 * time.Millisecond)
 		postJSON(t, srv.URL+"/handoff/threads", `{"from":"web","to":"api","subject":"s","body":"q"}`).Body.Close()
 	}()
-	resp, err := http.Get(srv.URL + "/handoff/threads?to=api&status=open&wait=2")
+	resp, err := http.Get(srv.URL + "/handoff/threads?waiting_on=api&wait=2")
 	if err != nil {
 		t.Fatalf("long-poll GET: %v", err)
 	}
@@ -378,7 +427,7 @@ func TestServer_LongPollWaitsForThread(t *testing.T) {
 
 func TestServer_LongPollTimesOutEmpty(t *testing.T) {
 	srv := newTestServer(t)
-	resp, err := http.Get(srv.URL + "/handoff/threads?to=api&status=open&wait=500ms")
+	resp, err := http.Get(srv.URL + "/handoff/threads?waiting_on=api&wait=500ms")
 	if err != nil {
 		t.Fatalf("long-poll GET: %v", err)
 	}
@@ -389,21 +438,14 @@ func TestServer_LongPollTimesOutEmpty(t *testing.T) {
 	}
 }
 
-func TestServer_StatusFilter(t *testing.T) {
+func TestServer_NoFilterReturnsAll(t *testing.T) {
 	srv := newTestServer(t)
 	postJSON(t, srv.URL+"/handoff/threads", `{"from":"api","to":"web","subject":"s","body":"b"}`).Body.Close()
 
-	resp, _ := http.Get(srv.URL + "/handoff/threads?status=open")
-	var open []Thread
-	decode(t, resp, &open)
-	if len(open) != 1 {
-		t.Errorf("status=open returned %d, want 1", len(open))
-	}
-
-	resp, _ = http.Get(srv.URL + "/handoff/threads?status=answered")
-	var answered []Thread
-	decode(t, resp, &answered)
-	if len(answered) != 0 {
-		t.Errorf("status=answered returned %d, want 0", len(answered))
+	resp, _ := http.Get(srv.URL + "/handoff/threads")
+	var list []Thread
+	decode(t, resp, &list)
+	if len(list) != 1 {
+		t.Errorf("unfiltered list returned %d, want 1", len(list))
 	}
 }

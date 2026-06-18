@@ -19,15 +19,16 @@ type boardMessage struct {
 }
 
 type boardThread struct {
-	ID       string
-	From     string
-	To       string
-	Subject  string
-	Status   string
-	Updated  string
-	Count    int // total messages in the thread
-	More     int // messages hidden before the previewed tail (overview only)
-	Messages []boardMessage
+	ID        string
+	From      string
+	To        string
+	Subject   string
+	Status    string
+	WaitingOn string
+	Updated   string
+	Count     int // total messages in the thread
+	More      int // messages hidden before the previewed tail (overview only)
+	Messages  []boardMessage
 }
 
 type boardView struct {
@@ -95,13 +96,14 @@ func toBoardMessage(m Message, asker string, preview bool) boardMessage {
 
 func boardThreadOf(t Thread) boardThread {
 	return boardThread{
-		ID:      t.ID,
-		From:    t.From,
-		To:      t.To,
-		Subject: t.Subject,
-		Status:  t.Status,
-		Updated: fmtClock(t.UpdatedAt, "Jan 2 · 15:04"),
-		Count:   len(t.Messages),
+		ID:        t.ID,
+		From:      t.From,
+		To:        t.To,
+		Subject:   t.Subject,
+		Status:    t.Status,
+		WaitingOn: t.WaitingOn,
+		Updated:   fmtClock(t.UpdatedAt, "Jan 2 · 15:04"),
+		Count:     len(t.Messages),
 	}
 }
 
@@ -231,6 +233,7 @@ summary.thead:hover .subject{color:#fff}
 .sub{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:0; font-size:11.5px; color:var(--muted)}
 .sub .route{color:var(--cyan)}
 .sub .id{color:var(--faint)}
+.sub .waiting{color:var(--open)}
 .sub .upd{margin-left:auto; color:var(--faint)}
 .dot{color:var(--line)}
 .msgs{list-style:none; margin:14px 0 0; padding:14px 0 0; border-top:1px dashed var(--line)}
@@ -308,6 +311,7 @@ const missionTmpl = `<!DOCTYPE html>
     <div class="thread-main">
       <div class="sub">
         <span class="route">{{.From}} → {{.To}}</span><span class="dot">·</span>
+        {{if .WaitingOn}}<span class="waiting">waiting on {{.WaitingOn}}</span><span class="dot">·</span>{{end}}
         <span class="count">{{.Count}} msg</span><span class="dot">·</span>
         <span class="id">{{.ID}}</span>
         <span class="upd">{{.Updated}}</span>
@@ -389,6 +393,7 @@ const missionThreadTmpl = `<!DOCTYPE html>
     <h1 class="dsubject">{{.T.Subject}}</h1>
     <div class="dsub">
       <span class="route">{{.T.From}} → {{.T.To}}</span><span class="dot">·</span>
+      {{if .T.WaitingOn}}<span class="waiting">waiting on {{.T.WaitingOn}}</span><span class="dot">·</span>{{end}}
       <span class="status"><i class="led"></i>{{.T.Status}}</span><span class="dot">·</span>
       <span class="count">{{.T.Count}} msg</span><span class="dot">·</span>
       <span class="id">{{.T.ID}}</span><span class="upd">· {{.T.Updated}}</span>
@@ -502,7 +507,7 @@ const terminalTmpl = `<!DOCTYPE html>
       <span class="tag">[{{.Status}}]</span>
       <button type="button" class="thr-close" aria-label="close thread" title="close thread">[x]</button>
     </div>
-    <div class="thr-meta">id:{{.ID}} · {{.Count}} msg · {{.Updated}}</div>
+    <div class="thr-meta">id:{{.ID}} · {{.Count}} msg · {{.Updated}}{{if .WaitingOn}} · waiting on {{.WaitingOn}}{{end}}</div>
     {{if .More}}<div class="moreln">… +{{.More}} earlier message{{if gt .More 1}}s{{end}}</div>{{end}}
     {{range .Messages}}
     <div class="line {{if .Own}}q{{else}}a{{end}}"><span class="from">{{.From}}</span> <span class="ts">{{.At}}</span>  <span class="txt{{if .Clipped}} clip{{end}}">{{.Body}}</span></div>
@@ -554,7 +559,7 @@ const terminalThreadTmpl = `<!DOCTYPE html>
       <span class="route">{{.T.From}}→{{.T.To}}</span>
       <span class="tag">[{{.T.Status}}]</span>
     </div>
-    <div class="thr-meta">id:{{.T.ID}}</div>
+    <div class="thr-meta">id:{{.T.ID}}{{if .T.WaitingOn}} · waiting on {{.T.WaitingOn}}{{end}}</div>
     {{range .T.Messages}}
     <div class="dline {{if .Own}}q{{else}}a{{end}}">
       <div class="dline-head"><span class="from">{{.From}}</span> <span class="ts">{{.At}}</span></div>

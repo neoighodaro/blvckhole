@@ -23,10 +23,17 @@ thread and ask instead of assuming. A quick question beats a wrong assumption.
 
 ## A thread
 
-`{ id, from, to, subject, status, created_at, updated_at, messages[] }` where
-`status` is `open` (awaiting an answer) or `answered`. Status flips
-automatically: when the recipient replies it becomes `answered`; when the
-original asker follows up it returns to `open`. You never set status yourself.
+`{ id, from, to, subject, status, waiting_on, created_at, updated_at, messages[] }`.
+
+- `waiting_on` names the sandbox **whose turn it is** — the one who should act
+  next. Watch for threads where `waiting_on` is you (see below).
+- `status` describes resolution: `open` (in flight, someone's turn), `answered`
+  (resolved, nobody's turn — still re-openable by a later reply), or `closed`
+  (dropped off the board).
+
+Turn-taking is **explicit**: every reply must say what happens next. There is no
+automatic flip — *you* decide whether you're handing the ball back or resolving
+the thread. Opening a thread sets `waiting_on` to the recipient automatically.
 
 ## Ask another sandbox a question (open a thread)
 
@@ -36,12 +43,14 @@ curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads" \
   -d "{\"from\":\"$BLVCKHOLE_SANDBOX\",\"to\":\"other-sandbox\",\"subject\":\"DB schema\",\"body\":\"What is the users table primary key?\"}"
 ```
 
-## See questions addressed to you (immediate snapshot)
+## See threads where it's your turn (immediate snapshot)
 
-Returns right away — use it for a one-shot check (e.g. at the start of a session):
+Returns right away — use it for a one-shot check (e.g. at the start of a session).
+Filtering on `waiting_on` covers **both directions**: threads others addressed to
+you *and* threads you opened that someone has handed back to you.
 
 ```bash
-curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open"
+curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?waiting_on=$BLVCKHOLE_SANDBOX"
 ```
 
 ## Read one thread
@@ -50,13 +59,32 @@ curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=op
 curl -sS "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID"
 ```
 
-## Answer a thread (or follow up)
+## Reply to a thread — always state intent
+
+Every reply must include **either** `waiting_on` (hand the ball to whoever should
+act next) **or** `status:"answered"` (resolve the thread). A reply with neither —
+or both — is rejected. This is deliberate: it stops you from accidentally marking
+a thread "answered" when you actually need the other agent to clarify.
+
+Hand the ball back (e.g. you answered but need a clarification before you can
+finish):
 
 ```bash
 curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID/messages" \
   -H 'Content-Type: application/json' \
-  -d "{\"from\":\"$BLVCKHOLE_SANDBOX\",\"body\":\"It is a bigint identity column named id.\"}"
+  -d "{\"from\":\"$BLVCKHOLE_SANDBOX\",\"body\":\"Got it — but which environment?\",\"waiting_on\":\"other-sandbox\"}"
 ```
+
+Resolve the thread when everything is settled (either party may do this):
+
+```bash
+curl -sS -X POST "$BLVCKHOLE_HANDOFF_URL/handoff/threads/THREAD_ID/messages" \
+  -H 'Content-Type: application/json' \
+  -d "{\"from\":\"$BLVCKHOLE_SANDBOX\",\"body\":\"It is a bigint identity column named id.\",\"status\":\"answered\"}"
+```
+
+`waiting_on` may be any sandbox — the other party, **yourself** (you replied but
+are still working and will follow up), or a third sandbox you're handing off to.
 
 ## Close a thread you opened
 
@@ -72,12 +100,15 @@ or an empty `[]` when the wait elapses, at which point you just re-issue it. Thi
 is near-instant and far cheaper than a timed `/loop`, so prefer it.
 
 ```bash
-# Blocks up to 5 minutes; returns immediately when a question for you arrives.
-curl -sS --max-time 310 "$BLVCKHOLE_HANDOFF_URL/handoff/threads?to=$BLVCKHOLE_SANDBOX&status=open&wait=300"
+# Blocks up to 5 minutes; returns the instant any thread becomes your turn.
+curl -sS --max-time 310 "$BLVCKHOLE_HANDOFF_URL/handoff/threads?waiting_on=$BLVCKHOLE_SANDBOX&wait=300"
 ```
 
-When a thread comes back, read it, do the work, POST your answer to its
-`/messages` endpoint, then re-issue the long-poll to keep listening.
+When a thread comes back, read it and act. If you can resolve it, reply with
+`status:"answered"`. If you need something first, reply with `waiting_on` set to
+whoever should act next — then re-issue the long-poll. Because the watch keys on
+`waiting_on`, a thread you opened comes back to you the moment the other agent
+hands it back, so you never answer and forget a thread.
 
 To stay responsive while you keep working, run the long-poll as a **background
 task** — you'll be notified the moment it returns with a question, and you can
