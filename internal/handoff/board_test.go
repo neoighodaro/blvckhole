@@ -236,6 +236,29 @@ func TestRenderBoard_ShowsOnlyRecentMessages(t *testing.T) {
 	}
 }
 
+// TestRenderBoard_ShowsWaitingOn verifies the "waiting on <name>" chip renders in
+// both variants on the overview and on the detail page.
+func TestRenderBoard_ShowsWaitingOn(t *testing.T) {
+	th := Thread{ID: "1", From: "api", To: "web", Subject: "S", Status: StatusOpen, WaitingOn: "web",
+		Messages: []Message{{From: "api", Body: "q", At: "2026-06-17T10:00:00Z"}}}
+	for _, v := range []string{"mission", "terminal"} {
+		var board strings.Builder
+		if err := RenderBoard(&board, []Thread{th}, v); err != nil {
+			t.Fatalf("RenderBoard(%q): %v", v, err)
+		}
+		if !strings.Contains(board.String(), "waiting on web") {
+			t.Errorf("variant %q board should show 'waiting on web'", v)
+		}
+		var detail strings.Builder
+		if err := RenderThread(&detail, th, v); err != nil {
+			t.Fatalf("RenderThread(%q): %v", v, err)
+		}
+		if !strings.Contains(detail.String(), "waiting on web") {
+			t.Errorf("variant %q detail should show 'waiting on web'", v)
+		}
+	}
+}
+
 // TestRenderThread_ShowsFullBodyAndEscapes verifies the detail page renders the
 // complete (unclipped) conversation and still escapes HTML.
 func TestRenderThread_ShowsFullBodyAndEscapes(t *testing.T) {

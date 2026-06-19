@@ -25,8 +25,10 @@ type createReq struct {
 }
 
 type messageReq struct {
-	From string `json:"from"`
-	Body string `json:"body"`
+	From      string `json:"from"`
+	Body      string `json:"body"`
+	WaitingOn string `json:"waiting_on"`
+	Status    string `json:"status"`
 }
 
 // NewServer returns the handoff HTTP handler with request logging.
@@ -45,14 +47,14 @@ func NewServer(store *Store) http.Handler {
 
 func handleBoard(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		threads, err := store.All("", "")
+		threads, err := store.All("")
 		if err != nil {
 			// The board is an HTML endpoint; don't answer it with a JSON body.
 			http.Error(w, "Failed to load threads.", http.StatusInternalServerError)
 			return
 		}
 		// The board shows live work; closed threads drop off it (still reachable
-		// by direct URL and via the API with ?status=closed).
+		// by direct URL, and in the unfiltered API list).
 		active := threads[:0]
 		for _, t := range threads {
 			if t.Status == StatusClosed {
@@ -89,7 +91,7 @@ func handleThreadPage(store *Store) http.HandlerFunc {
 func handleList(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		threads, err := store.WaitFor(r.Context(), q.Get("to"), q.Get("status"), parseWait(q.Get("wait")))
+		threads, err := store.WaitFor(r.Context(), q.Get("waiting_on"), parseWait(q.Get("wait")))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Failed to load threads.")
 			return
@@ -176,11 +178,24 @@ func handleMessage(store *Store) http.HandlerFunc {
 		if req.Body == "" {
 			errs["body"] = append(errs["body"], "The body field is required.")
 		}
+		// A reply must declare intent: resolve (status:answered) or hand the ball
+		// (waiting_on). Exactly one — never both, never neither.
+		switch {
+		case req.Status != "" && req.Status != StatusAnswered:
+			errs["status"] = append(errs["status"], `The status may only be "answered".`)
+		case req.Status != "" && req.WaitingOn != "":
+			errs["waiting_on"] = append(errs["waiting_on"], "Specify either waiting_on or status, not both.")
+		case req.Status == "" && req.WaitingOn == "":
+			errs["waiting_on"] = append(errs["waiting_on"], "Specify waiting_on or status:answered.")
+		case req.WaitingOn != "":
+			validateName(errs, "waiting_on", req.WaitingOn)
+		}
 		if len(errs) > 0 {
 			writeValidationError(w, errs)
 			return
 		}
-		thread, err := store.AddMessage(r.PathValue("id"), req.From, req.Body)
+		markAnswered := req.Status == StatusAnswered
+		thread, err := store.AddMessage(r.PathValue("id"), req.From, req.Body, req.WaitingOn, markAnswered)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Failed to add message.")
 			return

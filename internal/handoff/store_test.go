@@ -16,7 +16,7 @@ func newTestStore(t *testing.T) *Store {
 
 func TestStore_MissingFileIsEmpty(t *testing.T) {
 	s := newTestStore(t)
-	threads, err := s.All("", "")
+	threads, err := s.All("")
 	if err != nil {
 		t.Fatalf("All() error: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestStore_MalformedFileIsEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewStore(path)
-	threads, err := s.All("", "")
+	threads, err := s.All("")
 	if err != nil {
 		t.Fatalf("All() error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestStore_CorruptFileIsPreservedNotOverwritten(t *testing.T) {
 	}
 
 	// The store recovers and persists new data going forward.
-	threads, err := s.All("", "")
+	threads, err := s.All("")
 	if err != nil {
 		t.Fatalf("All() error: %v", err)
 	}
@@ -116,41 +116,32 @@ func TestStore_FindReturnsThread(t *testing.T) {
 	}
 }
 
-func TestStore_StatusFlipMatrix(t *testing.T) {
+func TestStore_AddMessageExplicitIntent(t *testing.T) {
 	s := newTestStore(t)
-	th, _ := s.Open("api", "web", "s", "q1")
-	if th.Status != StatusOpen {
-		t.Fatalf("after open: status = %q, want open", th.Status)
-	}
+	th, _ := s.Open("api", "web", "s", "q1") // open, waiting_on=web
 
-	// recipient answers -> answered
-	th, err := s.AddMessage(th.ID, "web", "a1")
+	// Recipient replies handing the ball back to the asker (clarify).
+	th, err := s.AddMessage(th.ID, "web", "need detail?", "api", false)
 	if err != nil {
 		t.Fatalf("AddMessage error: %v", err)
 	}
-	if th.Status != StatusAnswered {
-		t.Errorf("after recipient reply: status = %q, want answered", th.Status)
+	if th.Status != StatusOpen || th.WaitingOn != "api" {
+		t.Errorf("after clarify reply: status=%q waiting_on=%q, want open/api", th.Status, th.WaitingOn)
 	}
 	if len(th.Messages) != 2 {
 		t.Errorf("messages len = %d, want 2", len(th.Messages))
 	}
 
-	// original asker follows up -> open
-	th, _ = s.AddMessage(th.ID, "api", "q2")
-	if th.Status != StatusOpen {
-		t.Errorf("after asker follow-up: status = %q, want open", th.Status)
-	}
-
-	// recipient answers again -> answered
-	th, _ = s.AddMessage(th.ID, "web", "a2")
-	if th.Status != StatusAnswered {
-		t.Errorf("after second reply: status = %q, want answered", th.Status)
+	// Asker replies and resolves the thread.
+	th, _ = s.AddMessage(th.ID, "api", "here it is", "", true)
+	if th.Status != StatusAnswered || th.WaitingOn != "" {
+		t.Errorf("after resolve: status=%q waiting_on=%q, want answered/\"\"", th.Status, th.WaitingOn)
 	}
 }
 
 func TestStore_AddMessageMissingThread(t *testing.T) {
 	s := newTestStore(t)
-	th, err := s.AddMessage("nope", "web", "a")
+	th, err := s.AddMessage("nope", "web", "a", "api", false)
 	if err != nil {
 		t.Fatalf("AddMessage error: %v", err)
 	}
@@ -178,7 +169,7 @@ func TestStore_Delete(t *testing.T) {
 func TestStore_Close(t *testing.T) {
 	s := newTestStore(t)
 	th, _ := s.Open("api", "web", "s", "b")
-	s.AddMessage(th.ID, "web", "answer") // -> answered
+	s.AddMessage(th.ID, "web", "answer", "", true) // -> answered
 
 	closed, err := s.Close(th.ID)
 	if err != nil {
@@ -202,40 +193,55 @@ func TestStore_Close(t *testing.T) {
 	}
 }
 
+func TestStore_CloseClearsWaitingOn(t *testing.T) {
+	s := newTestStore(t)
+	th, _ := s.Open("api", "web", "s", "q") // open, waiting_on=web
+
+	closed, err := s.Close(th.ID)
+	if err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+	if closed.Status != StatusClosed || closed.WaitingOn != "" {
+		t.Errorf("after closing an open thread: status=%q waiting_on=%q, want closed/\"\"", closed.Status, closed.WaitingOn)
+	}
+
+	// A closed thread is nobody's turn, so the waiting_on watch must not surface
+	// it (otherwise a long-poll on the old recipient would spin).
+	web, _ := s.All("web")
+	if len(web) != 0 {
+		t.Errorf("All(waiting_on=web) returned %d threads, want 0 after close", len(web))
+	}
+}
+
 func TestStore_MessageReopensClosed(t *testing.T) {
 	s := newTestStore(t)
 	th, _ := s.Open("api", "web", "s", "b")
 	if _, err := s.Close(th.ID); err != nil {
 		t.Fatalf("Close error: %v", err)
 	}
-	// Closing is not permanent: a new message re-derives the status.
-	reopened, _ := s.AddMessage(th.ID, "web", "actually, here's an update")
-	if reopened.Status != StatusAnswered {
-		t.Errorf("after message on a closed thread, status = %q, want answered", reopened.Status)
+	// Closing is not permanent: an explicit-intent reply reopens it.
+	reopened, _ := s.AddMessage(th.ID, "web", "actually, an update", "api", false)
+	if reopened.Status != StatusOpen || reopened.WaitingOn != "api" {
+		t.Errorf("after reply on closed thread: status=%q waiting_on=%q, want open/api", reopened.Status, reopened.WaitingOn)
 	}
 }
 
-func TestStore_AllFilters(t *testing.T) {
+func TestStore_AllFiltersByWaitingOn(t *testing.T) {
 	s := newTestStore(t)
-	a, _ := s.Open("api", "web", "s1", "b") // open, to=web
-	s.Open("api", "db", "s2", "b")          // open, to=db
-	s.AddMessage(a.ID, "web", "answer")     // a -> answered, to=web
+	s.Open("api", "web", "s1", "b") // open, waiting_on=web
+	s.Open("api", "db", "s2", "b")  // open, waiting_on=db
 
-	byTo, _ := s.All("web", "")
-	if len(byTo) != 1 || byTo[0].To != "web" {
-		t.Errorf("All(to=web) = %d threads, want 1", len(byTo))
+	web, _ := s.All("web")
+	if len(web) != 1 || web[0].To != "web" {
+		t.Errorf("All(waiting_on=web) = %d threads, want 1", len(web))
 	}
-	byStatus, _ := s.All("", StatusOpen)
-	if len(byStatus) != 1 || byStatus[0].Status != StatusOpen {
-		t.Errorf("All(status=open) = %d threads, want 1", len(byStatus))
+	db, _ := s.All("db")
+	if len(db) != 1 || db[0].To != "db" {
+		t.Errorf("All(waiting_on=db) = %d threads, want 1", len(db))
 	}
-	both, _ := s.All("web", StatusAnswered)
-	if len(both) != 1 {
-		t.Errorf("All(to=web,status=answered) = %d, want 1", len(both))
-	}
-	none, _ := s.All("web", StatusOpen)
-	if len(none) != 0 {
-		t.Errorf("All(to=web,status=open) = %d, want 0", len(none))
+	all, _ := s.All("")
+	if len(all) != 2 {
+		t.Errorf("All(\"\") = %d threads, want 2 (no filter returns all)", len(all))
 	}
 }
 
@@ -253,7 +259,7 @@ func TestStore_ConcurrentOpensNoLostWrites(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	threads, _ := s.All("", "")
+	threads, _ := s.All("")
 	if len(threads) != n {
 		t.Errorf("after %d concurrent opens, All() len = %d", n, len(threads))
 	}
@@ -262,7 +268,7 @@ func TestStore_ConcurrentOpensNoLostWrites(t *testing.T) {
 func TestStore_WaitForReturnsImmediatelyWhenMatchExists(t *testing.T) {
 	s := newTestStore(t)
 	s.Open("web", "api", "s", "q") // open thread addressed to api
-	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 2*time.Second)
+	got, err := s.WaitFor(context.Background(), "api", 2*time.Second)
 	if err != nil {
 		t.Fatalf("WaitFor: %v", err)
 	}
@@ -277,7 +283,7 @@ func TestStore_WaitForBlocksUntilThreadAppears(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		s.Open("web", "api", "s", "q")
 	}()
-	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 2*time.Second)
+	got, err := s.WaitFor(context.Background(), "api", 2*time.Second)
 	if err != nil {
 		t.Fatalf("WaitFor: %v", err)
 	}
@@ -288,13 +294,13 @@ func TestStore_WaitForBlocksUntilThreadAppears(t *testing.T) {
 
 func TestStore_WaitForWakesOnFollowUp(t *testing.T) {
 	s := newTestStore(t)
-	th, _ := s.Open("web", "api", "s", "q") // to=api, open
-	s.AddMessage(th.ID, "api", "answer")    // api answers -> answered, no longer matches status=open
+	th, _ := s.Open("web", "api", "s", "q")        // to=api, open
+	s.AddMessage(th.ID, "api", "answer", "", true) // api resolves -> waiting_on cleared
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		s.AddMessage(th.ID, "web", "follow up") // asker follows up -> reopens
+		s.AddMessage(th.ID, "web", "follow up", "api", false) // asker follows up -> waiting_on=api
 	}()
-	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 2*time.Second)
+	got, err := s.WaitFor(context.Background(), "api", 2*time.Second)
 	if err != nil {
 		t.Fatalf("WaitFor: %v", err)
 	}
@@ -305,7 +311,7 @@ func TestStore_WaitForWakesOnFollowUp(t *testing.T) {
 
 func TestStore_WaitForTimesOutEmpty(t *testing.T) {
 	s := newTestStore(t)
-	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 30*time.Millisecond)
+	got, err := s.WaitFor(context.Background(), "api", 30*time.Millisecond)
 	if err != nil {
 		t.Fatalf("WaitFor: %v", err)
 	}
@@ -316,7 +322,7 @@ func TestStore_WaitForTimesOutEmpty(t *testing.T) {
 
 func TestStore_WaitForZeroIsImmediate(t *testing.T) {
 	s := newTestStore(t)
-	got, err := s.WaitFor(context.Background(), "api", StatusOpen, 0)
+	got, err := s.WaitFor(context.Background(), "api", 0)
 	if err != nil {
 		t.Fatalf("WaitFor: %v", err)
 	}
@@ -351,5 +357,46 @@ func TestDefaultStorePath_HomeFallback(t *testing.T) {
 	want := filepath.Join("/tmp/fakehome", ".config", "blvckhole", "handoff", "handoff.json")
 	if got != want {
 		t.Errorf("DefaultStorePath() = %q, want %q", got, want)
+	}
+}
+
+func TestStore_OpenSetsWaitingOnRecipient(t *testing.T) {
+	s := newTestStore(t)
+	th, err := s.Open("api", "web", "s", "q")
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	if th.WaitingOn != "web" {
+		t.Errorf("WaitingOn = %q, want %q (the recipient)", th.WaitingOn, "web")
+	}
+}
+
+func TestStore_LoadBackfillsWaitingOn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "handoff.json")
+	legacy := `{"threads":[
+      {"id":"leg-open","from":"api","to":"web","subject":"s","status":"open","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","messages":[{"from":"api","body":"q","at":"2026-01-01T00:00:00Z"}]},
+      {"id":"leg-open-recip","from":"api","to":"web","subject":"s","status":"open","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","messages":[{"from":"api","body":"q","at":"2026-01-01T00:00:00Z"},{"from":"web","body":"clarify?","at":"2026-01-01T00:01:00Z"}]},
+      {"id":"leg-ans","from":"api","to":"web","subject":"s","status":"answered","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","messages":[{"from":"api","body":"q","at":"2026-01-01T00:00:00Z"},{"from":"web","body":"a","at":"2026-01-01T00:01:00Z"}]},
+      {"id":"leg-closed","from":"api","to":"web","subject":"s","status":"closed","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","messages":[{"from":"api","body":"q","at":"2026-01-01T00:00:00Z"}]}
+    ]}`
+	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(path)
+
+	cases := map[string]string{
+		"leg-open":       "web", // last msg from asker -> recipient's turn
+		"leg-open-recip": "api", // last msg from recipient -> asker's turn
+		"leg-ans":        "",    // resolved -> nobody's turn
+		"leg-closed":     "",    // closed -> nobody's turn
+	}
+	for id, want := range cases {
+		th, err := s.Find(id)
+		if err != nil || th == nil {
+			t.Fatalf("Find(%q) = %+v, err %v", id, th, err)
+		}
+		if th.WaitingOn != want {
+			t.Errorf("thread %q WaitingOn = %q, want %q", id, th.WaitingOn, want)
+		}
 	}
 }

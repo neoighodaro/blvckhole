@@ -28,6 +28,7 @@ type Thread struct {
 	To        string    `json:"to"`
 	Subject   string    `json:"subject"`
 	Status    string    `json:"status"`
+	WaitingOn string    `json:"waiting_on"`
 	CreatedAt string    `json:"created_at"`
 	UpdatedAt string    `json:"updated_at"`
 	Messages  []Message `json:"messages"`
@@ -119,7 +120,31 @@ func (s *Store) load() ([]Thread, error) {
 	if fd.Threads == nil {
 		return []Thread{}, nil
 	}
-	return fd.Threads, nil
+	threads := fd.Threads
+	for i := range threads {
+		if threads[i].WaitingOn != "" {
+			continue
+		}
+		// Legacy threads predate waiting_on. Only an open thread has an
+		// outstanding turn; answered/closed are resolved (nobody's turn).
+		if threads[i].Status == StatusOpen {
+			threads[i].WaitingOn = turnFromLastMessage(threads[i])
+		}
+	}
+	return threads, nil
+}
+
+// turnFromLastMessage infers whose turn an open legacy thread is on from the
+// author of its most recent message: a message from the asker hands the ball to
+// the recipient; anything else hands it back to the asker.
+func turnFromLastMessage(t Thread) string {
+	if len(t.Messages) == 0 {
+		return t.To
+	}
+	if t.Messages[len(t.Messages)-1].From == t.From {
+		return t.To
+	}
+	return t.From
 }
 
 // save writes atomically: tmp file then rename.
@@ -152,7 +177,9 @@ func (s *Store) save(threads []Thread) error {
 	return os.Rename(tmp, s.path)
 }
 
-func (s *Store) All(filterTo, filterStatus string) ([]Thread, error) {
+// All returns every thread, or only those whose turn is filterWaitingOn when it
+// is non-empty.
+func (s *Store) All(filterWaitingOn string) ([]Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	threads, err := s.load()
@@ -161,10 +188,7 @@ func (s *Store) All(filterTo, filterStatus string) ([]Thread, error) {
 	}
 	result := make([]Thread, 0, len(threads))
 	for _, t := range threads {
-		if filterTo != "" && t.To != filterTo {
-			continue
-		}
-		if filterStatus != "" && t.Status != filterStatus {
+		if filterWaitingOn != "" && t.WaitingOn != filterWaitingOn {
 			continue
 		}
 		result = append(result, t)
@@ -174,19 +198,18 @@ func (s *Store) All(filterTo, filterStatus string) ([]Thread, error) {
 
 // WaitFor is a long-poll All: with wait <= 0 it returns immediately, otherwise it
 // blocks up to wait for at least one matching thread to appear. It re-queries on
-// every store change, so a thread created mid-wait returns right away; on timeout
-// (or a cancelled ctx) it returns the current — empty — result.
-func (s *Store) WaitFor(ctx context.Context, filterTo, filterStatus string, wait time.Duration) ([]Thread, error) {
+// every store change, so a thread whose turn becomes filterWaitingOn mid-wait
+// returns right away; on timeout (or a cancelled ctx) it returns the current —
+// empty — result.
+func (s *Store) WaitFor(ctx context.Context, filterWaitingOn string, wait time.Duration) ([]Thread, error) {
 	if wait <= 0 {
-		return s.All(filterTo, filterStatus)
+		return s.All(filterWaitingOn)
 	}
 	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	for {
-		// Subscribe before reading so a mutation between the read and the select
-		// cannot be missed.
 		ch := s.subscribe()
-		threads, err := s.All(filterTo, filterStatus)
+		threads, err := s.All(filterWaitingOn)
 		if err != nil || len(threads) > 0 {
 			return threads, err
 		}
@@ -228,6 +251,7 @@ func (s *Store) Open(from, to, subject, body string) (*Thread, error) {
 		To:        to,
 		Subject:   subject,
 		Status:    StatusOpen,
+		WaitingOn: to,
 		CreatedAt: now,
 		UpdatedAt: now,
 		Messages:  []Message{{From: from, Body: body, At: now}},
@@ -240,7 +264,11 @@ func (s *Store) Open(from, to, subject, body string) (*Thread, error) {
 	return &t, nil
 }
 
-func (s *Store) AddMessage(id, from, body string) (*Thread, error) {
+// AddMessage appends a message and applies the caller's explicit turn intent:
+// markAnswered resolves the thread (status=answered, no waiting party); otherwise
+// the thread stays open and waitingOn names whose turn it is next. Returns the
+// updated thread, or nil if no thread has the id.
+func (s *Store) AddMessage(id, from, body, waitingOn string, markAnswered bool) (*Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	threads, err := s.load()
@@ -251,12 +279,12 @@ func (s *Store) AddMessage(id, from, body string) (*Thread, error) {
 		if threads[i].ID == id {
 			now := time.Now().UTC().Format(time.RFC3339)
 			threads[i].Messages = append(threads[i].Messages, Message{From: from, Body: body, At: now})
-			// Status is derived, never client-set: asker follow-up reopens,
-			// anyone else answering closes.
-			if from == threads[i].From {
-				threads[i].Status = StatusOpen
-			} else {
+			if markAnswered {
 				threads[i].Status = StatusAnswered
+				threads[i].WaitingOn = ""
+			} else {
+				threads[i].Status = StatusOpen
+				threads[i].WaitingOn = waitingOn
 			}
 			threads[i].UpdatedAt = now
 			if err := s.save(threads); err != nil {
@@ -271,9 +299,9 @@ func (s *Store) AddMessage(id, from, body string) (*Thread, error) {
 }
 
 // Close marks a thread as manually closed so it drops off the board. It is not
-// a permanent state: a later message re-derives the status in AddMessage, so a
-// follow-up or answer reopens the thread. Returns the updated thread, or nil if
-// no thread has the id.
+// a permanent state: a later explicit-intent reply via AddMessage reopens the
+// thread (a reply with waiting_on set), while an answered reply leaves it
+// resolved. Returns the updated thread, or nil if no thread has the id.
 func (s *Store) Close(id string) (*Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -284,6 +312,10 @@ func (s *Store) Close(id string) (*Thread, error) {
 	for i := range threads {
 		if threads[i].ID == id {
 			threads[i].Status = StatusClosed
+			// A closed thread is nobody's turn: clearing waiting_on keeps it off
+			// the waiting_on watch (so a closed-while-open thread can't spin a
+			// long-poll) and matches the answered/closed = "" data model.
+			threads[i].WaitingOn = ""
 			if err := s.save(threads); err != nil {
 				return nil, err
 			}
