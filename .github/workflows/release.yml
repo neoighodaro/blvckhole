@@ -36,7 +36,7 @@ jobs:
             arch="${platform#*/}"
             output="blvckhole-${VERSION}-${os}-${arch}"
 
-            GOOS="$os" GOARCH="$arch" go build -ldflags="-s -w" -o "dist/${output}/blvckhole" .
+            GOOS="$os" GOARCH="$arch" go build -ldflags="-s -w -X github.com/neoighodaro/blvckhole/cmd.version=${VERSION}" -o "dist/${output}/blvckhole" .
             tar -czf "dist/${output}.tar.gz" -C "dist/${output}" blvckhole
             rm -rf "dist/${output}"
           done
