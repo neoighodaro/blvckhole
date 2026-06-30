@@ -51,7 +51,8 @@ func ExtractBinary(tarball []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if path.Base(hdr.Name) == "blvckhole" {
+		isReg := hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA
+		if isReg && path.Base(hdr.Name) == "blvckhole" {
 			return io.ReadAll(tr)
 		}
 	}

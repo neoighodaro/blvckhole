@@ -44,6 +44,25 @@ func TestVerifyChecksum(t *testing.T) {
 	}
 }
 
+// makeDirTarGz creates a tar.gz containing a single directory entry named name.
+func makeDirTarGz(t *testing.T, name string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	hdr := &tar.Header{
+		Typeflag: tar.TypeDir,
+		Name:     name,
+		Mode:     0755,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+	gz.Close()
+	return buf.Bytes()
+}
+
 func TestExtractBinary(t *testing.T) {
 	want := []byte("#!/fake/elf/binary")
 	tgz := makeTarGz(t, "blvckhole", want)
@@ -57,5 +76,10 @@ func TestExtractBinary(t *testing.T) {
 
 	if _, err := ExtractBinary(makeTarGz(t, "notblvckhole", want)); err == nil {
 		t.Error("ExtractBinary should fail when no blvckhole entry exists")
+	}
+
+	// A directory entry named "blvckhole" must NOT be matched — only regular files.
+	if _, err := ExtractBinary(makeDirTarGz(t, "blvckhole/")); err == nil {
+		t.Error("ExtractBinary should fail when the only 'blvckhole' entry is a directory")
 	}
 }

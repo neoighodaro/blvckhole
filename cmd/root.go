@@ -34,6 +34,12 @@ func maybeCheckForUpdate(cmd *cobra.Command) {
 	if update.Suppressed(os.Getenv, stdoutIsTTY(), cmd.Name()) {
 		return
 	}
+	// Skip the state read and background spawn on non-release (dev) builds:
+	// IsNewer("dev", …) is always false, so no notice would ever appear, and
+	// the `update` command itself refuses to install on dev builds anyway.
+	if !update.IsRelease(version) {
+		return
+	}
 	path, err := update.StatePath()
 	if err != nil {
 		return

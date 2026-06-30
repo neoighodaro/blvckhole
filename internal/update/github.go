@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://api.github.com"
-	defaultRepo    = "neoighodaro/blvckhole"
+	defaultBaseURL  = "https://api.github.com"
+	defaultRepo     = "neoighodaro/blvckhole"
+	apiTimeout      = 5 * time.Second  // budget for small JSON API calls
+	downloadTimeout = 60 * time.Second // budget for multi-MB tarball downloads
 )
 
 // Asset is a single downloadable file attached to a release.
@@ -43,17 +45,24 @@ type Client struct {
 	Repo       string
 }
 
-// NewClient returns a Client with sensible defaults and a short timeout.
+// NewClient returns a Client with sensible defaults. The underlying http.Client
+// uses downloadTimeout (60 s) to accommodate multi-MB tarball downloads.
+// LatestRelease further constrains its context to apiTimeout (5 s) so the
+// small JSON call stays fast regardless of the client-level timeout.
 func NewClient() *Client {
 	return &Client{
-		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		HTTPClient: &http.Client{Timeout: downloadTimeout},
 		BaseURL:    defaultBaseURL,
 		Repo:       defaultRepo,
 	}
 }
 
 // LatestRelease fetches the latest non-prerelease, non-draft release.
+// It applies a short apiTimeout deadline on top of the caller's context so the
+// JSON round-trip stays fast even though the client allows a longer download.
 func (c *Client) LatestRelease(ctx context.Context) (Release, error) {
+	ctx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
 	url := fmt.Sprintf("%s/repos/%s/releases/latest", c.BaseURL, c.Repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
