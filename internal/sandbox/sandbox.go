@@ -61,7 +61,7 @@ func Remove(name string) error {
 }
 
 func Run(name string, extraArgs ...string) error {
-	args := []string{"run", name}
+	args := []string{"run", "--name", name}
 	if len(extraArgs) > 0 {
 		args = append(args, "--")
 		args = append(args, extraArgs...)
@@ -109,7 +109,7 @@ func AllowNetwork(name string, domains []string) error {
 		return nil
 	}
 	joined := strings.Join(domains, ",")
-	cmd := exec.Command("sbx", "policy", "allow", "network", name, joined)
+	cmd := exec.Command("sbx", "policy", "allow", "network", "--sandbox", name, joined)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -120,7 +120,7 @@ func DenyNetwork(name string, domains []string) error {
 		return nil
 	}
 	joined := strings.Join(domains, ",")
-	cmd := exec.Command("sbx", "policy", "deny", "network", name, joined)
+	cmd := exec.Command("sbx", "policy", "deny", "network", "--sandbox", name, joined)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -128,7 +128,7 @@ func DenyNetwork(name string, domains []string) error {
 
 func RemoveNetwork(name string, domains []string) error {
 	for _, domain := range domains {
-		cmd := exec.Command("sbx", "policy", "rm", "network", name, "--resource", domain)
+		cmd := exec.Command("sbx", "policy", "rm", "network", "--sandbox", name, "--resource", domain)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {

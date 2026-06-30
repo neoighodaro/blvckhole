@@ -9,10 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is the build version, overridable at build time via
+// -ldflags "-X github.com/neoighodaro/blvckhole/cmd.version=v1.2.3".
+var version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:           "blvckhole",
 	Short:         "Docker Sandbox wrapper with declarative YAML config",
 	Long:          ui.RenderLogo() + "\n  A CLI tool to create and manage Docker Sandboxes from a YAML config file.",
+	Version:       version,
 	SilenceUsage:  true,
 }
 
