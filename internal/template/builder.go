@@ -103,7 +103,7 @@ func onStartBlock(cfg *config.Config) string {
 
 	lines := []string{`if [ -z "${BLVCKHOLE_ON_START:-}" ]; then export BLVCKHOLE_ON_START=1`}
 	for _, cmd := range cfg.Scripts.OnStart {
-		lines = append(lines, fmt.Sprintf("{ cd %s && %s ; } >/dev/null 2>&1 || true", workDir, cmd))
+		lines = append(lines, fmt.Sprintf("( cd %s && %s ) >/dev/null 2>&1 || true", workDir, cmd))
 	}
 	lines = append(lines, "fi")
 
