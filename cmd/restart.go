@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/neoighodaro/blvckhole/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -17,10 +16,6 @@ var restartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "Stop and start the sandbox",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := ensureSbxInstalled(); err != nil {
-			return err
-		}
-
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
@@ -31,7 +26,12 @@ var restartCmd = &cobra.Command{
 			return err
 		}
 
-		if sandbox.IsRunning(cfg.Name) || sandbox.Exists(cfg.Name) {
+		b, err := loadBackend(cfg)
+		if err != nil {
+			return err
+		}
+
+		if b.IsRunning(cfg) || b.Exists(cfg) {
 			if !restartForce {
 				fmt.Println(ui.Warn.Render("Warning: This will destroy the sandbox and all data not part of the project."))
 				fmt.Print(ui.Info.Render("Continue? [y/N] "))
@@ -44,12 +44,12 @@ var restartCmd = &cobra.Command{
 			}
 
 			fmt.Println(ui.Accent.Render("Removing sandbox..."))
-			if err := sandbox.Remove(cfg.Name); err != nil {
+			if err := b.Remove(cfg); err != nil {
 				return fmt.Errorf("failed to remove sandbox: %w", err)
 			}
 		}
 
-		return runStart(cfg)
+		return runStart(b, cfg)
 	},
 }
 

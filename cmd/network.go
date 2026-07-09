@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/neoighodaro/blvckhole/internal/config"
-	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/neoighodaro/blvckhole/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -49,10 +48,6 @@ var networkRemoveCmd = &cobra.Command{
 }
 
 func runNetwork(action string, domains []string, persist bool) error {
-	if err := ensureSbxInstalled(); err != nil {
-		return err
-	}
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -63,7 +58,12 @@ func runNetwork(action string, domains []string, persist bool) error {
 		return err
 	}
 
-	exists := sandbox.Exists(cfg.Name)
+	b, err := loadBackend(cfg)
+	if err != nil {
+		return err
+	}
+
+	exists := b.Exists(cfg)
 	if !exists && !persist {
 		if action == "deny" {
 			return fmt.Errorf("sandbox %q is not created; run 'blvckhole start' first (deny rules are runtime-only and cannot be saved to config)", cfg.Name)
@@ -75,11 +75,11 @@ func runNetwork(action string, domains []string, persist bool) error {
 		var applyErr error
 		switch action {
 		case "allow":
-			applyErr = sandbox.AllowNetwork(cfg.Name, domains)
+			applyErr = b.AllowNetwork(cfg, domains)
 		case "deny":
-			applyErr = sandbox.DenyNetwork(cfg.Name, domains)
+			applyErr = b.DenyNetwork(cfg, domains)
 		case "remove":
-			applyErr = sandbox.RemoveNetwork(cfg.Name, domains)
+			applyErr = b.RemoveNetwork(cfg, domains)
 		}
 		if applyErr != nil {
 			return fmt.Errorf("failed to apply network policy: %w", applyErr)

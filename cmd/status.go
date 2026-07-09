@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/neoighodaro/blvckhole/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -15,10 +14,6 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show sandbox status",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := ensureSbxInstalled(); err != nil {
-			return err
-		}
-
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
@@ -29,7 +24,12 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 
-		info, err := sandbox.Status(cfg.Name)
+		b, err := loadBackend(cfg)
+		if err != nil {
+			return err
+		}
+
+		info, err := b.Status(cfg)
 		if err != nil {
 			return err
 		}

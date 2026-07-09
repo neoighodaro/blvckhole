@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -81,6 +83,7 @@ type ScriptsConfig struct {
 type Config struct {
 	Name      string            `yaml:"name"`
 	Agent     string            `yaml:"agent"`
+	Backend   string            `yaml:"backend"`
 	Template  string            `yaml:"template"`
 	Workspace string            `yaml:"workspace"`
 	Packages  []string          `yaml:"packages"`
@@ -141,6 +144,9 @@ func Parse(path string, projectDir string) (*Config, error) {
 	}
 	if cfg.Agent == "" {
 		cfg.Agent = "claude-code"
+	}
+	if cfg.Backend == "" {
+		cfg.Backend = "sbx"
 	}
 
 	if cfg.Handoff.Enabled && cfg.Handoff.URL == "" {
@@ -259,6 +265,17 @@ func (c *Config) SandboxImageName() string {
 // KitDir returns the path to the kit directory inside the project config.
 func (c *Config) KitDir() string {
 	return filepath.Join(c.ProjectDir, ".config", "blvckhole", ".kit")
+}
+
+// FileHash returns the sha256 hex digest of the config file's bytes, or ""
+// if the file cannot be read.
+func (c *Config) FileHash() string {
+	data, err := os.ReadFile(c.ConfigPath)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // HandoffPort returns the port from the configured handoff URL, or "" if it

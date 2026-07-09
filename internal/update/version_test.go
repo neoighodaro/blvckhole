@@ -28,7 +28,7 @@ func TestIsNewer(t *testing.T) {
 		{"v0.0.4", "v0.0.5", true},
 		{"v0.0.5", "v0.0.5", false},
 		{"v0.0.6", "v0.0.5", false},
-		{"dev", "v0.0.5", false},   // invalid current
+		{"dev", "v0.0.5", false},     // invalid current
 		{"v0.0.4", "garbage", false}, // invalid latest
 	}
 	for _, c := range cases {
