@@ -120,3 +120,23 @@ func TestAllRuntimes_ValidateAcceptsVersionStrings(t *testing.T) {
 		}
 	}
 }
+
+func TestPnpmRuntime_SharesCorepackCacheWithAgent(t *testing.T) {
+	r := Get("pnpm")
+
+	root := r.RootBlock("11.5.3")
+	if !strings.Contains(root, "corepack prepare pnpm@11.5.3 --activate") {
+		t.Errorf("expected corepack prepare for the pinned version, got:\n%s", root)
+	}
+	if !strings.Contains(root, "COREPACK_HOME="+corepackHome) {
+		t.Errorf("corepack must populate the shared cache as root, got:\n%s", root)
+	}
+	if !strings.Contains(root, "chown -R agent "+corepackHome) {
+		t.Errorf("shared cache must be owned by the agent user, got:\n%s", root)
+	}
+
+	// Without this the agent user gets its own empty cache and re-downloads pnpm.
+	if env := r.EnvBlock("11.5.3"); env != "ENV COREPACK_HOME="+corepackHome {
+		t.Errorf("agent must inherit the shared cache, got:\n%s", env)
+	}
+}
