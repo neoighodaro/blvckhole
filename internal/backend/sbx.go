@@ -98,6 +98,11 @@ func parseSandboxList(output []byte) ([]Info, error) {
 // network rules, published ports, and on_create scripts — the exact flow
 // previously inlined in cmd/start.go.
 func (s *SbxBackend) Provision(cfg *config.Config) error {
+	if s.Exists(cfg) {
+		fmt.Println(ui.Info.Render("Stale sandbox detected, removing..."))
+		s.Remove(cfg)
+	}
+
 	kitDir := cfg.KitDir()
 	if err := os.MkdirAll(kitDir, 0755); err != nil {
 		return fmt.Errorf("failed to create kit directory: %w", err)
@@ -218,8 +223,7 @@ func (s *SbxBackend) RunCommand(cfg *config.Config, command string) error {
 	if workDir == "" {
 		workDir = cfg.ProjectDir
 	}
-	script := fmt.Sprintf("cd '%s' && %s",
-		strings.ReplaceAll(workDir, "'", `'\''`), command)
+	script := fmt.Sprintf("cd %s && %s", shellQuote(workDir), command)
 	return s.exec(cfg.Name, false, "bash", "-c", script)
 }
 
@@ -230,8 +234,7 @@ func (s *SbxBackend) ExecSilent(cfg *config.Config, command ...string) (string, 
 func (s *SbxBackend) Shell(cfg *config.Config, dir string) error {
 	shellArgs := []string{"bash"}
 	if dir != "" {
-		quoted := "'" + strings.ReplaceAll(dir, "'", "'\\''") + "'"
-		shellArgs = []string{"bash", "-c", fmt.Sprintf("cd %s && exec bash", quoted)}
+		shellArgs = []string{"bash", "-c", fmt.Sprintf("cd %s && exec bash", shellQuote(dir))}
 	}
 
 	sbxPath, err := exec.LookPath("sbx")
@@ -329,4 +332,53 @@ func (s *SbxBackend) execSilent(name string, command ...string) (string, error) 
 	cmd := exec.Command("sbx", args...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+// PrepareAgent merges blvckhole's Claude settings (statusline, plugins,
+// theme) into ~/.claude/settings.json inside the sandbox — the sandbox's
+// copy, never the host's.
+func (s *SbxBackend) PrepareAgent(cfg *config.Config) error {
+	script := fmt.Sprintf(`
+set -e
+SETTINGS="$HOME/.claude/settings.json"
+[ -f "$SETTINGS" ] || exit 0
+
+export SLPATH="$(ls -d ~/.claude/plugins/cache/claude-dashboard/claude-dashboard/*/dist/index.js 2>/dev/null | sort -V | tail -1)"
+
+SANDBOX_SETTINGS="$HOME/.claude/settings.sandbox.json"
+[ -f "$HOME/.claude/themes/sandbox.json" ] && export HAS_THEME=1 || export HAS_THEME=0
+
+if [ -f "$SANDBOX_SETTINGS" ]; then
+  jq -s '%s' "$SETTINGS" "$SANDBOX_SETTINGS" > "$SETTINGS.tmp"
+else
+  jq '%s' "$SETTINGS" > "$SETTINGS.tmp"
+fi
+mv "$SETTINGS.tmp" "$SETTINGS"
+`, jqMergeFilter(cfg), jqNoMergeFilter(cfg))
+
+	_, err := s.execSilent(cfg.Name, "bash", "-c", script)
+	return err
+}
+
+func jqSettingsFilter(cfg *config.Config) string {
+	f := ""
+	f += `if env.SLPATH != "" then .statusLine = {type: "command", command: ("node " + env.SLPATH)} else . end`
+
+	if len(cfg.Claude.Plugins.Install) > 0 {
+		f += ` | .enabledPlugins = (.enabledPlugins // {})`
+		for _, plugin := range cfg.Claude.Plugins.Install {
+			f += fmt.Sprintf(` | .enabledPlugins["%s"] = true`, plugin)
+		}
+	}
+
+	f += ` | if env.HAS_THEME == "1" then .theme = "custom:sandbox" | .themeId = "custom:sandbox" else . end`
+	return f
+}
+
+func jqMergeFilter(cfg *config.Config) string {
+	return ".[0] * .[1] | " + jqSettingsFilter(cfg)
+}
+
+func jqNoMergeFilter(cfg *config.Config) string {
+	return jqSettingsFilter(cfg)
 }

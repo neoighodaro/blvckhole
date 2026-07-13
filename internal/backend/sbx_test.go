@@ -3,6 +3,8 @@ package backend
 import (
 	"strings"
 	"testing"
+
+	"github.com/neoighodaro/blvckhole/internal/config"
 )
 
 func TestGetSbx(t *testing.T) {
@@ -51,5 +53,27 @@ func TestSbxEnsureAvailableMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "sbx is not installed") {
 		t.Fatalf("error = %q, want mention of sbx install", err.Error())
+	}
+}
+
+func TestJqSettingsFilterIncludesPlugins(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Claude.Plugins.Install = []string{"foo@bar"}
+	f := jqSettingsFilter(cfg)
+	if !strings.Contains(f, `.enabledPlugins["foo@bar"] = true`) {
+		t.Fatalf("jqSettingsFilter missing plugin enable: %s", f)
+	}
+	if !strings.Contains(f, ".enabledPlugins = (.enabledPlugins // {})") {
+		t.Fatalf("jqSettingsFilter missing enabledPlugins init: %s", f)
+	}
+}
+
+func TestJqMergeFilterMergesDocumentsFirst(t *testing.T) {
+	cfg := &config.Config{}
+	if !strings.HasPrefix(jqMergeFilter(cfg), ".[0] * .[1] | ") {
+		t.Fatalf("jqMergeFilter = %q, want merge prefix", jqMergeFilter(cfg))
+	}
+	if jqNoMergeFilter(cfg) != jqSettingsFilter(cfg) {
+		t.Fatal("jqNoMergeFilter must equal jqSettingsFilter")
 	}
 }

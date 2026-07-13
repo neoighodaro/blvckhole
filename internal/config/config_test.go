@@ -334,3 +334,22 @@ func TestValidate_HandoffDisabledSkipsURLCheck(t *testing.T) {
 		t.Errorf("disabled handoff should not validate URL, got: %v", err)
 	}
 }
+
+func TestParse_HandoffDefaultsURLNonoBackend(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `name: myapp
+backend: nono
+handoff:
+  enabled: true
+`)
+	cfg, err := Parse(path, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Handoff.URL != "http://localhost:8787" {
+		t.Errorf("Handoff.URL = %q, want http://localhost:8787", cfg.Handoff.URL)
+	}
+	if cfg.HandoffPort() != "8787" {
+		t.Errorf("HandoffPort() = %q, want 8787", cfg.HandoffPort())
+	}
+}

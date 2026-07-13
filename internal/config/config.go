@@ -149,8 +149,16 @@ func Parse(path string, projectDir string) (*Config, error) {
 		cfg.Backend = "sbx"
 	}
 
+	// The handoff URL default is backend-aware: a nono agent is a host
+	// process, so the broker is plain localhost; host.docker.internal is a
+	// Docker-ism that only sbx containers resolve. Must stay below the
+	// cfg.Backend default above.
 	if cfg.Handoff.Enabled && cfg.Handoff.URL == "" {
-		cfg.Handoff.URL = "http://host.docker.internal:8787"
+		if cfg.Backend == "nono" {
+			cfg.Handoff.URL = "http://localhost:8787"
+		} else {
+			cfg.Handoff.URL = "http://host.docker.internal:8787"
+		}
 	}
 
 	// Deprecated 'startup:' is an alias for 'scripts.on_create' — fold it in

@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/neoighodaro/blvckhole/internal/backend"
 	"github.com/neoighodaro/blvckhole/internal/config"
 	"github.com/neoighodaro/blvckhole/internal/ui"
 	"github.com/spf13/cobra"
@@ -60,59 +59,13 @@ var agentCmd = &cobra.Command{
 			fmt.Println(ui.Info.Render("  Run 'blvckhole agent --rebuild' to apply the changes."))
 		}
 
-		if err := mergeAgentSettings(b, cfg); err != nil {
+		if err := b.PrepareAgent(cfg); err != nil {
 			fmt.Println(ui.Info.Render("Warning: could not merge agent settings: " + err.Error()))
 		}
 
 		fmt.Println(ui.Accent.Render("Starting agent..."))
 		return b.Run(cfg, args...)
 	},
-}
-
-func mergeAgentSettings(b backend.Backend, cfg *config.Config) error {
-	script := fmt.Sprintf(`
-set -e
-SETTINGS="$HOME/.claude/settings.json"
-[ -f "$SETTINGS" ] || exit 0
-
-export SLPATH="$(ls -d ~/.claude/plugins/cache/claude-dashboard/claude-dashboard/*/dist/index.js 2>/dev/null | sort -V | tail -1)"
-
-SANDBOX_SETTINGS="$HOME/.claude/settings.sandbox.json"
-[ -f "$HOME/.claude/themes/sandbox.json" ] && export HAS_THEME=1 || export HAS_THEME=0
-
-if [ -f "$SANDBOX_SETTINGS" ]; then
-  jq -s '%s' "$SETTINGS" "$SANDBOX_SETTINGS" > "$SETTINGS.tmp"
-else
-  jq '%s' "$SETTINGS" > "$SETTINGS.tmp"
-fi
-mv "$SETTINGS.tmp" "$SETTINGS"
-`, jqMergeFilter(cfg), jqNoMergeFilter(cfg))
-
-	_, err := b.ExecSilent(cfg, "bash", "-c", script)
-	return err
-}
-
-func jqSettingsFilter(cfg *config.Config) string {
-	f := ""
-	f += `if env.SLPATH != "" then .statusLine = {type: "command", command: ("node " + env.SLPATH)} else . end`
-
-	if len(cfg.Claude.Plugins.Install) > 0 {
-		f += ` | .enabledPlugins = (.enabledPlugins // {})`
-		for _, plugin := range cfg.Claude.Plugins.Install {
-			f += fmt.Sprintf(` | .enabledPlugins["%s"] = true`, plugin)
-		}
-	}
-
-	f += ` | if env.HAS_THEME == "1" then .theme = "custom:sandbox" | .themeId = "custom:sandbox" else . end`
-	return f
-}
-
-func jqMergeFilter(cfg *config.Config) string {
-	return ".[0] * .[1] | " + jqSettingsFilter(cfg)
-}
-
-func jqNoMergeFilter(cfg *config.Config) string {
-	return jqSettingsFilter(cfg)
 }
 
 func renameZellijTab(cfg *config.Config) {

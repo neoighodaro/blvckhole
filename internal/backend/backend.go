@@ -6,6 +6,7 @@ package backend
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/neoighodaro/blvckhole/internal/config"
 )
@@ -38,7 +39,11 @@ type Backend interface {
 
 	// Provision builds whatever the backend needs (image, kit, profile) and
 	// brings the sandbox to a running, fully configured state. It prints its
-	// own progress lines and stores the config hash on success.
+	// own progress lines and stores the config hash on success. Callers do
+	// not remove a stale sandbox before calling Provision — that decision
+	// belongs to the backend: nono treats exists-with-current-config as a
+	// cheap no-op, while sbx may still destroy-and-recreate a stopped
+	// container, since that is its only path back to a running state.
 	Provision(cfg *config.Config) error
 
 	// Run launches the sandbox's configured agent, attached to the terminal.
@@ -52,6 +57,12 @@ type Backend interface {
 	// Shell replaces the current process with an interactive shell in the
 	// sandbox, starting in dir when non-empty. It only returns on error.
 	Shell(cfg *config.Config, dir string) error
+
+	// PrepareAgent applies backend-specific setup immediately before the
+	// agent launches (sbx: merge blvckhole's Claude settings into the
+	// sandbox's ~/.claude/settings.json; nono: nothing — the host agent
+	// already uses the user's real settings).
+	PrepareAgent(cfg *config.Config) error
 
 	Stop(cfg *config.Config) error
 	Remove(cfg *config.Config) error
@@ -67,7 +78,8 @@ type Backend interface {
 }
 
 var registry = map[string]Backend{
-	"sbx": &SbxBackend{},
+	"nono": &NonoBackend{},
+	"sbx":  &SbxBackend{},
 }
 
 // Get returns the backend registered under name, or nil.
@@ -83,4 +95,10 @@ func Names() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// shellQuote wraps s in single quotes, escaping embedded single quotes, so
+// it can be safely spliced into a bash -c script.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

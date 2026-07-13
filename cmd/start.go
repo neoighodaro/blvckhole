@@ -76,11 +76,6 @@ func runStart(b backend.Backend, cfg *config.Config) error {
 		}
 	}
 
-	if b.Exists(cfg) {
-		fmt.Println(ui.Info.Render("Stale sandbox detected, removing..."))
-		b.Remove(cfg)
-	}
-
 	if cfg.Handoff.Enabled {
 		cfg.MergedEnv["BLVCKHOLE_SANDBOX"] = cfg.Name
 		cfg.MergedEnv["BLVCKHOLE_HANDOFF_URL"] = cfg.Handoff.URL
