@@ -115,6 +115,16 @@ func TestRender_OnStartAppendsToPersistentInit(t *testing.T) {
 	if !strings.Contains(out, "cd /work/proj &&") {
 		t.Error("on_start command should cd into project dir")
 	}
+	// The cd must run in a subshell "( ... )", not a group "{ ...; }". The hook is
+	// sourced (via BASH_ENV/CLAUDE_ENV_FILE) before every bash command, so a group
+	// would leak the cd into the caller's shell and force every command to the
+	// project root — breaking worktree sessions.
+	if !strings.Contains(out, "( cd /work/proj &&") {
+		t.Errorf("on_start command must run in a subshell so the cd doesn't leak; got:\n%s", out)
+	}
+	if strings.Contains(out, "{ cd /work/proj") {
+		t.Errorf("on_start command must not use a group command (cd leaks into caller); got:\n%s", out)
+	}
 }
 
 func TestRender_OnStartGuardsAgainstReentrantSourcing(t *testing.T) {

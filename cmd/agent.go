@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/neoighodaro/blvckhole/internal/config"
-	"github.com/neoighodaro/blvckhole/internal/sandbox"
 	"github.com/neoighodaro/blvckhole/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -19,16 +18,17 @@ var agentCmd = &cobra.Command{
 	Use:   "agent",
 	Short: "Launch the AI agent in the sandbox",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := ensureSbxInstalled(); err != nil {
-			return err
-		}
-
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
 
 		cfg, err := loadConfig(cwd)
+		if err != nil {
+			return err
+		}
+
+		b, err := loadBackend(cfg)
 		if err != nil {
 			return err
 		}
@@ -42,76 +42,30 @@ var agentCmd = &cobra.Command{
 			// Rebuild must tear down whatever exists — including a stopped
 			// (existing but not running) sandbox — otherwise the !Exists check
 			// below skips runStart and the agent boots in the stale sandbox.
-			if sandbox.Exists(cfg.Name) {
+			if b.Exists(cfg) {
 				fmt.Println(ui.Info.Render("Removing existing sandbox..."))
-				if err := sandbox.Remove(cfg.Name); err != nil {
+				if err := b.Remove(cfg); err != nil {
 					return fmt.Errorf("failed to remove sandbox: %w", err)
 				}
 			}
 		}
 
-		if !sandbox.Exists(cfg.Name) {
-			if err := runStart(cfg); err != nil {
+		if !b.Exists(cfg) {
+			if err := runStart(b, cfg); err != nil {
 				return err
 			}
-		} else if sandbox.IsRunning(cfg.Name) && configChanged(cfg) {
+		} else if b.IsRunning(cfg) && configChanged(b, cfg) {
 			fmt.Println(ui.Warn.Render("Config has changed since this sandbox was created."))
 			fmt.Println(ui.Info.Render("  Run 'blvckhole agent --rebuild' to apply the changes."))
 		}
 
-		if err := mergeAgentSettings(cfg); err != nil {
+		if err := b.PrepareAgent(cfg); err != nil {
 			fmt.Println(ui.Info.Render("Warning: could not merge agent settings: " + err.Error()))
 		}
 
 		fmt.Println(ui.Accent.Render("Starting agent..."))
-		return sandbox.Run(cfg.Name, args...)
+		return b.Run(cfg, args...)
 	},
-}
-
-func mergeAgentSettings(cfg *config.Config) error {
-	script := fmt.Sprintf(`
-set -e
-SETTINGS="$HOME/.claude/settings.json"
-[ -f "$SETTINGS" ] || exit 0
-
-export SLPATH="$(ls -d ~/.claude/plugins/cache/claude-dashboard/claude-dashboard/*/dist/index.js 2>/dev/null | sort -V | tail -1)"
-
-SANDBOX_SETTINGS="$HOME/.claude/settings.sandbox.json"
-[ -f "$HOME/.claude/themes/sandbox.json" ] && export HAS_THEME=1 || export HAS_THEME=0
-
-if [ -f "$SANDBOX_SETTINGS" ]; then
-  jq -s '%s' "$SETTINGS" "$SANDBOX_SETTINGS" > "$SETTINGS.tmp"
-else
-  jq '%s' "$SETTINGS" > "$SETTINGS.tmp"
-fi
-mv "$SETTINGS.tmp" "$SETTINGS"
-`, jqMergeFilter(cfg), jqNoMergeFilter(cfg))
-
-	_, err := sandbox.ExecSilent(cfg.Name, "bash", "-c", script)
-	return err
-}
-
-func jqSettingsFilter(cfg *config.Config) string {
-	f := ""
-	f += `if env.SLPATH != "" then .statusLine = {type: "command", command: ("node " + env.SLPATH)} else . end`
-
-	if len(cfg.Claude.Plugins.Install) > 0 {
-		f += ` | .enabledPlugins = (.enabledPlugins // {})`
-		for _, plugin := range cfg.Claude.Plugins.Install {
-			f += fmt.Sprintf(` | .enabledPlugins["%s"] = true`, plugin)
-		}
-	}
-
-	f += ` | if env.HAS_THEME == "1" then .theme = "custom:sandbox" | .themeId = "custom:sandbox" else . end`
-	return f
-}
-
-func jqMergeFilter(cfg *config.Config) string {
-	return ".[0] * .[1] | " + jqSettingsFilter(cfg)
-}
-
-func jqNoMergeFilter(cfg *config.Config) string {
-	return jqSettingsFilter(cfg)
 }
 
 func renameZellijTab(cfg *config.Config) {

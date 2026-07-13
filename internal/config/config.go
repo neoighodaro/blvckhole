@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -81,6 +83,7 @@ type ScriptsConfig struct {
 type Config struct {
 	Name      string            `yaml:"name"`
 	Agent     string            `yaml:"agent"`
+	Backend   string            `yaml:"backend"`
 	Template  string            `yaml:"template"`
 	Workspace string            `yaml:"workspace"`
 	Packages  []string          `yaml:"packages"`
@@ -142,9 +145,20 @@ func Parse(path string, projectDir string) (*Config, error) {
 	if cfg.Agent == "" {
 		cfg.Agent = "claude-code"
 	}
+	if cfg.Backend == "" {
+		cfg.Backend = "sbx"
+	}
 
+	// The handoff URL default is backend-aware: a nono agent is a host
+	// process, so the broker is plain localhost; host.docker.internal is a
+	// Docker-ism that only sbx containers resolve. Must stay below the
+	// cfg.Backend default above.
 	if cfg.Handoff.Enabled && cfg.Handoff.URL == "" {
-		cfg.Handoff.URL = "http://host.docker.internal:8787"
+		if cfg.Backend == "nono" {
+			cfg.Handoff.URL = "http://localhost:8787"
+		} else {
+			cfg.Handoff.URL = "http://host.docker.internal:8787"
+		}
 	}
 
 	// Deprecated 'startup:' is an alias for 'scripts.on_create' — fold it in
@@ -259,6 +273,17 @@ func (c *Config) SandboxImageName() string {
 // KitDir returns the path to the kit directory inside the project config.
 func (c *Config) KitDir() string {
 	return filepath.Join(c.ProjectDir, ".config", "blvckhole", ".kit")
+}
+
+// FileHash returns the sha256 hex digest of the config file's bytes, or ""
+// if the file cannot be read.
+func (c *Config) FileHash() string {
+	data, err := os.ReadFile(c.ConfigPath)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // HandoffPort returns the port from the configured handoff URL, or "" if it

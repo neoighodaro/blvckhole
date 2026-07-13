@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/neoighodaro/blvckhole/internal/ui"
@@ -80,13 +79,6 @@ func Execute() error {
 	err := rootCmd.Execute()
 	printUpdateNotice()
 	return err
-}
-
-func ensureSbxInstalled() error {
-	if _, err := exec.LookPath("sbx"); err != nil {
-		return fmt.Errorf("sbx is not installed. Install it from: https://docs.docker.com/ai/sandboxes/")
-	}
-	return nil
 }
 
 func exitWithError(msg string) {
