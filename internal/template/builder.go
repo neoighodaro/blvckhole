@@ -23,9 +23,12 @@ type templateData struct {
 	Plugins     config.ClaudePlugins
 }
 
+// bridgeScriptPath is where the embedded bridge.sh lands inside the image.
+const bridgeScriptPath = "/usr/local/lib/blvckhole/bridge.sh"
+
 func Render(cfg *config.Config) (string, error) {
 	data := templateData{
-		Packages: cfg.Packages,
+		Packages: effectivePackages(cfg),
 		Plugins:  cfg.Claude.Plugins,
 	}
 
@@ -57,7 +60,11 @@ func Render(cfg *config.Config) (string, error) {
 		}
 	}
 
-	if block := onStartBlock(cfg); block != "" {
+	if len(cfg.Bridges) > 0 {
+		data.RootBlocks = append(data.RootBlocks, bridgeInstallBlock())
+	}
+
+	if block := sessionHookBlock(cfg); block != "" {
 		data.RootBlocks = append(data.RootBlocks, block)
 	}
 
@@ -78,21 +85,46 @@ func Render(cfg *config.Config) (string, error) {
 	return buf.String(), nil
 }
 
-// onStartBlock returns a Dockerfile RUN that appends the configured on_start
-// commands to /etc/sandbox-persistent.sh — the base image's per-session init
-// hook (wired as BASH_ENV and CLAUDE_ENV_FILE), so they run on every shell and
-// agent session, including after a stop/resume. Each command is run in a
-// subshell with output suppressed so it can't disrupt or spam the host shell;
-// commands must therefore be idempotent. Returns "" when no on_start commands.
+// effectivePackages returns the apt package list to install, adding socat when
+// bridges are configured (they need it) unless the user already listed it. The
+// user's configured Packages slice is left untouched.
+func effectivePackages(cfg *config.Config) []string {
+	if len(cfg.Bridges) == 0 {
+		return cfg.Packages
+	}
+	for _, p := range cfg.Packages {
+		if p == "socat" {
+			return cfg.Packages
+		}
+	}
+	return append(append([]string{}, cfg.Packages...), "socat")
+}
+
+// bridgeInstallBlock copies the embedded bridge.sh into the image so the
+// per-session hook can invoke it.
+func bridgeInstallBlock() string {
+	return "USER root\n" +
+		"COPY bridge.sh " + bridgeScriptPath + "\n" +
+		"RUN chmod +x " + bridgeScriptPath + "\n" +
+		"USER agent"
+}
+
+// sessionHookBlock returns a Dockerfile RUN that appends bridge bring-up and
+// on_start commands to /etc/sandbox-persistent.sh — the base image's
+// per-session init hook (wired as BASH_ENV and CLAUDE_ENV_FILE), so they run on
+// every shell and agent session, including after a stop/resume. Bridges run
+// first so host services are reachable before user on_start commands. Each line
+// is run with output suppressed and `|| true` so it can't disrupt or spam the
+// host shell; commands must therefore be idempotent. Returns "" when there is
+// nothing to run.
 //
-// Because the hook is sourced by EVERY non-interactive bash (via BASH_ENV), an
-// on_start command that itself invokes bash would re-source the hook in that
-// child shell, re-run the commands, spawn another bash, and so on — an infinite
-// recursion / fork bomb. The whole block is therefore wrapped in an *exported*
-// sentinel guard: child shells inherit BLVCKHOLE_ON_START and skip the block,
-// so on_start runs once per process tree instead of recursing.
-func onStartBlock(cfg *config.Config) string {
-	if len(cfg.Scripts.OnStart) == 0 {
+// Because the hook is sourced by EVERY non-interactive bash (via BASH_ENV), a
+// command that itself invokes bash would re-source the hook in that child
+// shell, re-run the commands, and recurse forever (fork bomb). The whole block
+// is therefore wrapped in an *exported* sentinel guard: child shells inherit
+// BLVCKHOLE_ON_START and skip the block, so it runs once per process tree.
+func sessionHookBlock(cfg *config.Config) string {
+	if len(cfg.Bridges) == 0 && len(cfg.Scripts.OnStart) == 0 {
 		return ""
 	}
 
@@ -102,6 +134,13 @@ func onStartBlock(cfg *config.Config) string {
 	}
 
 	lines := []string{`if [ -z "${BLVCKHOLE_ON_START:-}" ]; then export BLVCKHOLE_ON_START=1`}
+	for _, b := range cfg.Bridges {
+		args := fmt.Sprintf("%s %d %d", b.Name, b.Port, b.HostPort)
+		if b.Env != "" {
+			args += " " + b.Env
+		}
+		lines = append(lines, fmt.Sprintf("%s %s >/dev/null 2>&1 || true", bridgeScriptPath, args))
+	}
 	for _, cmd := range cfg.Scripts.OnStart {
 		lines = append(lines, fmt.Sprintf("( cd %s && %s ) >/dev/null 2>&1 || true", workDir, cmd))
 	}
@@ -134,6 +173,12 @@ func Build(cfg *config.Config) error {
 
 	if err := os.WriteFile(filepath.Join(kitDir, "Dockerfile"), []byte(dockerfile), 0644); err != nil {
 		return err
+	}
+
+	if len(cfg.Bridges) > 0 {
+		if err := os.WriteFile(filepath.Join(kitDir, "bridge.sh"), embedded.BridgeSh, 0755); err != nil {
+			return err
+		}
 	}
 
 	cmd := exec.Command("docker", "build", "-t", cfg.SandboxImageName(), kitDir)
