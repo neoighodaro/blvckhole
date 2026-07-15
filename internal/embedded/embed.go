@@ -24,3 +24,6 @@ var BashAliasesSh []byte
 
 //go:embed sandbox-handoff.md
 var SandboxHandoffMD []byte
+
+//go:embed bridge.sh
+var BridgeSh []byte
