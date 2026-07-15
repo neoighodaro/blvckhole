@@ -40,8 +40,6 @@ var validRuntimes = map[string]bool{
 
 var nameRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// hostnameRegexp matches a bridge hostname: dot-separated labels of
-// alphanumerics and hyphens (e.g. "pgsql", "db.internal").
 var hostnameRegexp = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`)
 
 type ClaudePlugins struct {

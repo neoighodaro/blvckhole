@@ -100,8 +100,6 @@ func effectivePackages(cfg *config.Config) []string {
 	return append(append([]string{}, cfg.Packages...), "socat")
 }
 
-// bridgeInstallBlock copies the embedded bridge.sh into the image so the
-// per-session hook can invoke it.
 func bridgeInstallBlock() string {
 	return "USER root\n" +
 		"COPY bridge.sh " + bridgeScriptPath + "\n" +
