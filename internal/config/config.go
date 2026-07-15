@@ -139,6 +139,24 @@ func Discover(projectDir string) (string, error) {
 	return "", fmt.Errorf("no blvckhole.yaml found. Run 'blvckhole init' to create one")
 }
 
+// Resolve returns the config file path to use. With an empty override it falls
+// back to Discover(projectDir); otherwise it uses override directly (resolved
+// relative to projectDir when not absolute) and errors if that file is missing.
+func Resolve(projectDir, override string) (string, error) {
+	if override == "" {
+		return Discover(projectDir)
+	}
+
+	path := override
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(projectDir, path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("config file not found: %s", override)
+	}
+	return path, nil
+}
+
 // Parse reads and unmarshals the YAML config at path, applies defaults,
 // merges env_file entries, and validates the result.
 func Parse(path string, projectDir string) (*Config, error) {

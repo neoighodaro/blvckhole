@@ -267,6 +267,54 @@ func TestDiscover_NotFound(t *testing.T) {
 	}
 }
 
+func TestResolve_EmptyOverrideFallsBackToDiscover(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "blvckhole.yaml"), []byte("name: test\n"), 0644)
+
+	path, err := Resolve(dir, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path != filepath.Join(dir, "blvckhole.yaml") {
+		t.Errorf("got %q, want discovered root config", path)
+	}
+}
+
+func TestResolve_RelativeOverride(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "staging.yaml"), []byte("name: test\n"), 0644)
+
+	path, err := Resolve(dir, "staging.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path != filepath.Join(dir, "staging.yaml") {
+		t.Errorf("got %q, want project-relative override path", path)
+	}
+}
+
+func TestResolve_AbsoluteOverride(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "elsewhere.yaml")
+	os.WriteFile(abs, []byte("name: test\n"), 0644)
+
+	path, err := Resolve(t.TempDir(), abs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path != abs {
+		t.Errorf("got %q, want absolute override path", path)
+	}
+}
+
+func TestResolve_OverrideNotFound(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Resolve(dir, "nope.yaml")
+	if err == nil {
+		t.Fatal("expected error when override config does not exist")
+	}
+}
+
 func TestParse_HandoffDefaultsURL(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `name: my-app

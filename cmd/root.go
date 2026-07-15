@@ -18,6 +18,10 @@ var version = "dev"
 // check, if any. Set in PersistentPreRunE, printed after the command runs.
 var pendingUpdate string
 
+// configPath overrides config-file discovery when set via --config/-C. Empty
+// means fall back to the usual discovery under the working directory.
+var configPath string
+
 func stdoutIsTTY() bool {
 	fi, err := os.Stdout.Stat()
 	if err != nil {
@@ -79,6 +83,11 @@ func Execute() error {
 	err := rootCmd.Execute()
 	printUpdateNotice()
 	return err
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "C", "",
+		"path to config file (overrides discovery)")
 }
 
 func exitWithError(msg string) {

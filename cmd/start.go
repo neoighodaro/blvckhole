@@ -36,7 +36,7 @@ var startCmd = &cobra.Command{
 }
 
 func loadConfig(projectDir string) (*config.Config, error) {
-	path, err := config.Discover(projectDir)
+	path, err := config.Resolve(projectDir, configPath)
 	if err != nil {
 		return nil, err
 	}
