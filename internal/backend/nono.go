@@ -113,6 +113,9 @@ func validateForNono(cfg *config.Config) (warnings []string, err error) {
 	if len(cfg.Scripts.OnStart) > 0 {
 		warnings = append(warnings, "nono backend: ignoring 'scripts.on_start' (nono has no per-session start hook)")
 	}
+	if len(cfg.Bridges) > 0 {
+		warnings = append(warnings, "nono backend: ignoring 'bridges' (a nono agent runs on the host and reaches host services directly)")
+	}
 	if len(cfg.Php.Extensions) > 0 {
 		warnings = append(warnings, "nono backend: ignoring 'php.extensions' (cannot install PHP extensions on the host)")
 	}
