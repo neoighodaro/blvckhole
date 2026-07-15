@@ -77,3 +77,26 @@ func TestJqMergeFilterMergesDocumentsFirst(t *testing.T) {
 		t.Fatal("jqNoMergeFilter must equal jqSettingsFilter")
 	}
 }
+
+func TestBridgeAllowResources(t *testing.T) {
+	cfg := &config.Config{Bridges: []config.BridgeConfig{
+		{Name: "pgsql", Port: 5432, HostPort: 53432},
+		{Name: "redis", Port: 6379, HostPort: 56379},
+	}}
+	got := bridgeAllowResources(cfg)
+	want := []string{"localhost:53432", "localhost:56379"}
+	if len(got) != len(want) {
+		t.Fatalf("bridgeAllowResources = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("bridgeAllowResources[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestBridgeAllowResourcesEmpty(t *testing.T) {
+	if got := bridgeAllowResources(&config.Config{}); len(got) != 0 {
+		t.Errorf("no bridges should yield no resources, got %v", got)
+	}
+}

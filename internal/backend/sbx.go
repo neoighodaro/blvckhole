@@ -161,6 +161,13 @@ func (s *SbxBackend) Provision(cfg *config.Config) error {
 		}
 	}
 
+	if resources := bridgeAllowResources(cfg); len(resources) > 0 {
+		fmt.Println(ui.Accent.Render("Allowing bridge host ports (" + strings.Join(resources, ", ") + ")..."))
+		if err := s.AllowNetwork(cfg, resources); err != nil {
+			return fmt.Errorf("failed to allow bridge host ports: %w", err)
+		}
+	}
+
 	for _, port := range cfg.Ports {
 		fmt.Println(ui.Accent.Render("Publishing port " + port + "..."))
 		if err := s.publishPort(cfg.Name, port); err != nil {
@@ -179,6 +186,17 @@ func (s *SbxBackend) Provision(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// bridgeAllowResources returns the host proxy allow-rule resources for the
+// configured bridges. socat dials host.docker.internal, but the proxy evaluates
+// the rule against the host's localhost, so each bridge needs localhost:<HostPort>.
+func bridgeAllowResources(cfg *config.Config) []string {
+	resources := make([]string, 0, len(cfg.Bridges))
+	for _, b := range cfg.Bridges {
+		resources = append(resources, fmt.Sprintf("localhost:%d", b.HostPort))
+	}
+	return resources
 }
 
 func (s *SbxBackend) create(name, templateImage, kitDir, agent, workDir string) error {

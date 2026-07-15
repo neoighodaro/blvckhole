@@ -55,6 +55,17 @@ ports: []
   # - 3000
   # - "8080:80"
 
+# Host-service bridges: reach a service on the host (e.g. a Docker-Compose
+# database) from inside the sandbox under a stable hostname, without editing
+# your app's .env. blvckhole installs socat, tunnels port -> host_port, resolves
+# name, and allows the host port. Set env to the var to override when the
+# runtime mounts /etc/hosts read-only.
+bridges: []
+  # - name: pgsql
+  #   port: 5432
+  #   host_port: 53432
+  #   env: DB_HOST
+
 # Inline environment variables
 env: {}
   # NODE_ENV: development
@@ -83,10 +94,11 @@ scripts:
     # - "pnpm build"
 
   # Run at the start of every shell/agent session (including after a stop/
-  # resume). Use for state a restart wipes, e.g. port bridges or daemons.
+  # resume). Use for state a restart wipes, e.g. daemons. For host-service
+  # bridges, prefer the 'bridges:' section above.
   # Baked into the sandbox's per-session init hook; must be idempotent.
   on_start: []
-    # - "./scripts/db-bridge.sh"
+    # - "./scripts/warm-cache.sh"
 
 # Network whitelist (only these domains are reachable from the sandbox)
 network: []

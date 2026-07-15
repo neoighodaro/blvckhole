@@ -196,3 +196,95 @@ func TestRender_RuntimeOrdering(t *testing.T) {
 		t.Error("bun (agent block) should appear after USER agent")
 	}
 }
+
+func TestRender_BridgesInjectSocat(t *testing.T) {
+	cfg := &config.Config{
+		Name:  "test",
+		Agent: "claude-code",
+		Bridges: []config.BridgeConfig{
+			{Name: "pgsql", Port: 5432, HostPort: 53432},
+		},
+	}
+	out, err := Render(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "socat") {
+		t.Errorf("bridges must install socat, got:\n%s", out)
+	}
+}
+
+func TestRender_BridgesInstallScript(t *testing.T) {
+	cfg := &config.Config{
+		Name:    "test",
+		Agent:   "claude-code",
+		Bridges: []config.BridgeConfig{{Name: "pgsql", Port: 5432, HostPort: 53432}},
+	}
+	out, err := Render(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "COPY bridge.sh /usr/local/lib/blvckhole/bridge.sh") {
+		t.Errorf("expected COPY of bridge.sh, got:\n%s", out)
+	}
+}
+
+func TestRender_BridgesWireSessionHook(t *testing.T) {
+	cfg := &config.Config{
+		Name:  "test",
+		Agent: "claude-code",
+		Bridges: []config.BridgeConfig{
+			{Name: "pgsql", Port: 5432, HostPort: 53432, Env: "DB_HOST"},
+		},
+	}
+	out, err := Render(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "/etc/sandbox-persistent.sh") {
+		t.Errorf("bridges must be wired into the persistent hook, got:\n%s", out)
+	}
+	if !strings.Contains(out, "/usr/local/lib/blvckhole/bridge.sh pgsql 5432 53432 DB_HOST") {
+		t.Errorf("expected bridge invocation with args, got:\n%s", out)
+	}
+	// Must live inside the re-entry guard.
+	guard := strings.Index(out, "export BLVCKHOLE_ON_START")
+	call := strings.Index(out, "bridge.sh pgsql")
+	if guard == -1 || call == -1 || call < guard {
+		t.Errorf("bridge invocation must sit inside the BLVCKHOLE_ON_START guard, got:\n%s", out)
+	}
+}
+
+func TestRender_BridgesRunBeforeOnStart(t *testing.T) {
+	cfg := &config.Config{
+		Name:       "test",
+		Agent:      "claude-code",
+		ProjectDir: "/work/proj",
+		Bridges:    []config.BridgeConfig{{Name: "pgsql", Port: 5432, HostPort: 53432}},
+		Scripts:    config.ScriptsConfig{OnStart: []string{"echo hi"}},
+	}
+	out, err := Render(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	bridge := strings.Index(out, "bridge.sh pgsql")
+	onstart := strings.Index(out, "echo hi")
+	if bridge == -1 || onstart == -1 || bridge > onstart {
+		t.Errorf("bridge must come up before user on_start; got bridge=%d onstart=%d\n%s", bridge, onstart, out)
+	}
+}
+
+func TestRender_BridgeNoEnvOmitsArg(t *testing.T) {
+	cfg := &config.Config{
+		Name:    "test",
+		Agent:   "claude-code",
+		Bridges: []config.BridgeConfig{{Name: "redis", Port: 6379, HostPort: 56379}},
+	}
+	out, err := Render(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "bridge.sh redis 6379 56379 >") {
+		t.Errorf("bridge with no env should invoke with three args, got:\n%s", out)
+	}
+}

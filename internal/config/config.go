@@ -40,6 +40,8 @@ var validRuntimes = map[string]bool{
 
 var nameRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+var hostnameRegexp = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`)
+
 type ClaudePlugins struct {
 	Marketplaces []string `yaml:"marketplaces"`
 	Install      []string `yaml:"install"`
@@ -67,6 +69,19 @@ type ZellijConfig struct {
 type HandoffConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	URL     string `yaml:"url"`
+}
+
+// BridgeConfig declares a host-service bridge: a socat tunnel that makes a
+// service on the host reachable from inside the sandbox under a stable
+// hostname/port, without touching the app's .env. blvckhole runs the bridge on
+// every session start, resolves the hostname (via /etc/hosts, or the Env
+// override when /etc/hosts is read-only), and allows localhost:<HostPort> on
+// the host proxy.
+type BridgeConfig struct {
+	Name     string `yaml:"name"`      // hostname the app connects to (matches .env DB_HOST)
+	Port     int    `yaml:"port"`      // in-sandbox listen port (matches .env DB_PORT)
+	HostPort int    `yaml:"host_port"` // real published port on the host
+	Env      string `yaml:"env"`       // optional: env var to point at the bridge when /etc/hosts is read-only
 }
 
 // ScriptsConfig holds commands run inside the sandbox at lifecycle points.
@@ -100,6 +115,7 @@ type Config struct {
 	Zellij    ZellijConfig      `yaml:"zellij"`
 	Memory    string            `yaml:"memory"`
 	Handoff   HandoffConfig     `yaml:"handoff"`
+	Bridges   []BridgeConfig    `yaml:"bridges"`
 
 	MergedEnv             map[string]string `yaml:"-"`
 	ProjectDir            string            `yaml:"-"`
@@ -213,6 +229,9 @@ func (c *Config) Validate() error {
 	if c.Template != "" && len(c.Runtimes) > 0 {
 		return fmt.Errorf("cannot set both 'template' and 'runtimes': when using a custom template, runtimes must be installed in your Dockerfile")
 	}
+	if c.Template != "" && len(c.Bridges) > 0 {
+		return fmt.Errorf("cannot set both 'template' and 'bridges': bridges need blvckhole to install socat and wire the session hook, which a custom template controls itself")
+	}
 
 	for name := range c.Runtimes {
 		if !validRuntimes[name] {
@@ -240,6 +259,21 @@ func (c *Config) Validate() error {
 		u, err := url.Parse(c.Handoff.URL)
 		if err != nil || u.Host == "" || u.Port() == "" {
 			return fmt.Errorf("invalid handoff.url %q: must be a URL with host and port", c.Handoff.URL)
+		}
+	}
+
+	for _, b := range c.Bridges {
+		if b.Name == "" {
+			return fmt.Errorf("bridge is missing 'name' (the hostname the app connects to)")
+		}
+		if !hostnameRegexp.MatchString(b.Name) {
+			return fmt.Errorf("invalid bridge name %q: must be a valid hostname", b.Name)
+		}
+		if b.Port < 1 || b.Port > 65535 {
+			return fmt.Errorf("invalid bridge %q port %d: must be between 1 and 65535", b.Name, b.Port)
+		}
+		if b.HostPort < 1 || b.HostPort > 65535 {
+			return fmt.Errorf("invalid bridge %q host_port %d: must be between 1 and 65535", b.Name, b.HostPort)
 		}
 	}
 

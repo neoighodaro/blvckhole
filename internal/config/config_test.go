@@ -353,3 +353,82 @@ handoff:
 		t.Errorf("HandoffPort() = %q, want 8787", cfg.HandoffPort())
 	}
 }
+
+func TestParse_Bridges(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, `name: myapp
+packages:
+  - socat
+bridges:
+  - name: pgsql
+    port: 5432
+    host_port: 53432
+    env: DB_HOST
+  - name: redis
+    port: 6379
+    host_port: 56379
+`)
+	cfg, err := Parse(path, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Bridges) != 2 {
+		t.Fatalf("Bridges len = %d, want 2", len(cfg.Bridges))
+	}
+	pg := cfg.Bridges[0]
+	if pg.Name != "pgsql" || pg.Port != 5432 || pg.HostPort != 53432 || pg.Env != "DB_HOST" {
+		t.Errorf("Bridges[0] = %+v, want {pgsql 5432 53432 DB_HOST}", pg)
+	}
+	// env is optional.
+	if cfg.Bridges[1].Env != "" {
+		t.Errorf("Bridges[1].Env = %q, want empty (optional)", cfg.Bridges[1].Env)
+	}
+}
+
+func TestValidate_BridgeMissingName(t *testing.T) {
+	cfg := &Config{Name: "x", Agent: "claude-code", Bridges: []BridgeConfig{{Port: 5432, HostPort: 53432}}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for bridge with no name")
+	}
+}
+
+func TestValidate_BridgeInvalidPort(t *testing.T) {
+	cfg := &Config{Name: "x", Agent: "claude-code", Bridges: []BridgeConfig{{Name: "pgsql", Port: 0, HostPort: 53432}}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for bridge port 0")
+	}
+	cfg = &Config{Name: "x", Agent: "claude-code", Bridges: []BridgeConfig{{Name: "pgsql", Port: 5432, HostPort: 70000}}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for bridge host_port > 65535")
+	}
+}
+
+func TestValidate_BridgeInvalidName(t *testing.T) {
+	cfg := &Config{Name: "x", Agent: "claude-code", Bridges: []BridgeConfig{{Name: "not a host", Port: 5432, HostPort: 53432}}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for bridge name with spaces")
+	}
+}
+
+func TestValidate_BridgeWithTemplateErrors(t *testing.T) {
+	cfg := &Config{
+		Name:     "x",
+		Agent:    "claude-code",
+		Template: "my/custom:image",
+		Bridges:  []BridgeConfig{{Name: "pgsql", Port: 5432, HostPort: 53432}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error: bridges require blvckhole to inject socat, impossible with a custom template")
+	}
+}
+
+func TestValidate_BridgeValid(t *testing.T) {
+	cfg := &Config{
+		Name:    "x",
+		Agent:   "claude-code",
+		Bridges: []BridgeConfig{{Name: "pgsql", Port: 5432, HostPort: 53432, Env: "DB_HOST"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("valid bridge should pass, got: %v", err)
+	}
+}

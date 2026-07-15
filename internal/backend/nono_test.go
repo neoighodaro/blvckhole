@@ -136,6 +136,7 @@ func TestValidateForNonoWarnings(t *testing.T) {
 	cfg.Shell.Aliases = map[string]string{"g": "git"}
 	cfg.Memory = "some-kit"
 	cfg.Scripts.OnStart = []string{"echo hi"}
+	cfg.Bridges = []config.BridgeConfig{{Name: "pgsql", Port: 5432, HostPort: 53432}}
 	cfg.Php.Extensions = []string{"redis"}
 	warnings, err := validateForNono(cfg)
 	if err != nil {
@@ -146,6 +147,7 @@ func TestValidateForNonoWarnings(t *testing.T) {
 		"nono backend: ignoring 'shell.aliases' (they would modify your real shell config)",
 		"nono backend: ignoring 'memory:' (kits are sbx-only)",
 		"nono backend: ignoring 'scripts.on_start' (nono has no per-session start hook)",
+		"nono backend: ignoring 'bridges' (a nono agent runs on the host and reaches host services directly)",
 		"nono backend: ignoring 'php.extensions' (cannot install PHP extensions on the host)",
 	}
 	if len(warnings) != len(want) {
