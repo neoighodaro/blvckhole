@@ -60,10 +60,19 @@ func (r *PhpRuntime) RootBlock(version string) string {
 	// Ubuntu 25.04 (Plucky) only ships up to PHP 8.4. For 8.5, pull from
 	// Ubuntu 26.04 (Resolute) repos with APT pinning so only PHP and its
 	// dependencies are upgraded.
+	//
+	// Ubuntu serves amd64/i386 from archive.ubuntu.com and every other
+	// architecture from ports.ubuntu.com, so the mirror is resolved from the
+	// image's own dpkg architecture rather than hardcoded. HTTPS throughout:
+	// some networks silently drop plain HTTP to the mirror, hanging apt.
 	if version == "8.5" {
-		b.WriteString(`RUN printf '%s\n' \
+		b.WriteString(`RUN case "$(dpkg --print-architecture)" in \
+      amd64|i386) MIRROR='https://archive.ubuntu.com/ubuntu/' ;; \
+      *) MIRROR='https://ports.ubuntu.com/ubuntu-ports/' ;; \
+    esac \
+ && printf '%s\n' \
       'Types: deb' \
-      'URIs: http://ports.ubuntu.com/ubuntu-ports/' \
+      "URIs: $MIRROR" \
       'Suites: resolute resolute-updates resolute-security' \
       'Components: main universe' \
       'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
