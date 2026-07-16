@@ -2,7 +2,15 @@ FROM docker/sandbox-templates:claude-code-minimal
 
 USER root
 
-RUN apt-get update \
+# Force apt over HTTPS (443): some networks silently drop plain HTTP (80) to the
+# distro mirror, which makes apt-get update hang forever. The base image already
+# ships ca-certificates, so https to the same mirror just works. Missing source
+# files (globs that don't expand) are ignored so this stays a no-op elsewhere.
+RUN sed -i 's|http://|https://|g' \
+      /etc/apt/sources.list \
+      /etc/apt/sources.list.d/*.list \
+      /etc/apt/sources.list.d/*.sources 2>/dev/null; \
+    apt-get update \
  && apt-get install -y --no-install-recommends locales{{ if .Packages }} {{ join .Packages " " }}{{ end }} \
  && rm -rf /var/lib/apt/lists/* \
  && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && locale-gen
