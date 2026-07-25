@@ -183,7 +183,7 @@ func Build(cfg *config.Config) error {
 	// old CombinedOutput approach) meant a slow or network-stalled build — e.g.
 	// apt-get update hanging on an unreachable mirror — showed nothing at all,
 	// looking like an inexplicable freeze until the user gave up.
-	cmd := exec.Command("docker", "build", "-t", cfg.SandboxImageName(), kitDir)
+	cmd := exec.Command("docker", "build", "--pull", "-t", cfg.SandboxImageName(), kitDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
