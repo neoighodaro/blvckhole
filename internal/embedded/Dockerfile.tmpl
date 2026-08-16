@@ -22,6 +22,8 @@ ENV TERM=xterm-256color
 {{- end }}
 
 USER agent
+
+RUN claude update || true
 {{- range .AgentBlocks }}
 
 {{ . }}
