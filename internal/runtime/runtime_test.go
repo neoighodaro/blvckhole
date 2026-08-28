@@ -64,9 +64,21 @@ func TestPythonRuntime_AgentBlock(t *testing.T) {
 
 func TestGoRuntime_RootBlock(t *testing.T) {
 	r := Get("go")
-	block := r.RootBlock("1.23")
-	if !strings.Contains(block, "go1.23.linux") {
-		t.Errorf("expected go1.23 download, got:\n%s", block)
+
+	// A pinned major.minor has no tarball of its own; it must resolve the
+	// latest patch at build time rather than hit go1.23.linux (which 404s).
+	minor := r.RootBlock("1.23")
+	if strings.Contains(minor, "go1.23.linux") {
+		t.Errorf("major.minor must not download go1.23.linux directly, got:\n%s", minor)
+	}
+	if !strings.Contains(minor, `grep -oE '"go1.23(\.[0-9]+)?"'`) {
+		t.Errorf("expected latest-patch resolution for 1.23, got:\n%s", minor)
+	}
+
+	// A full major.minor.patch downloads directly.
+	full := r.RootBlock("1.23.4")
+	if !strings.Contains(full, "go1.23.4.linux") {
+		t.Errorf("expected go1.23.4 direct download, got:\n%s", full)
 	}
 }
 
