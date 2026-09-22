@@ -200,11 +200,30 @@ func bridgeAllowResources(cfg *config.Config) []string {
 }
 
 func (s *SbxBackend) create(name, templateImage, kitDir, agent, workDir string) error {
-	args := []string{"create", "--template", templateImage, "--name", name, "--kit", kitDir, agent, workDir}
-	cmd := exec.Command("sbx", args...)
+	cmd := exec.Command("sbx", sbxCreateArgs(name, templateImage, kitDir, agent, workDir)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// sbxCreateArgs builds the `sbx create` argument list.
+//
+// --skills off disables sbx's shared skills store. That store (default mode
+// "readonly") bind-mounts a managed copy of ~/.claude/skills read-only at
+// /home/agent/.claude/skills — the exact path blvckhole's kit populates via
+// its home files (copied skills plus the version-matched embedded handoff
+// skill). With the store enabled, sbx's home-file copy hits the read-only
+// mount and the start hook fails with "Read-only file system", aborting
+// creation. blvckhole owns skill delivery, so we turn the store off.
+func sbxCreateArgs(name, templateImage, kitDir, agent, workDir string) []string {
+	return []string{
+		"create",
+		"--skills", "off",
+		"--template", templateImage,
+		"--name", name,
+		"--kit", kitDir,
+		agent, workDir,
+	}
 }
 
 func (s *SbxBackend) linkWorkspace(name, source, dest string) error {
