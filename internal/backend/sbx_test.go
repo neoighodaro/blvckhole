@@ -56,6 +56,23 @@ func TestSbxEnsureAvailableMissing(t *testing.T) {
 	}
 }
 
+func TestSbxCreateArgsDisablesSharedSkillsStore(t *testing.T) {
+	joined := strings.Join(sbxCreateArgs("myapp", "img", "/kit", "claude", "."), " ")
+
+	// sbx's shared skills store (default "readonly") bind-mounts
+	// /home/agent/.claude/skills read-only and collides with the kit-delivered
+	// skills, failing sandbox creation. blvckhole must opt out.
+	if !strings.Contains(joined, "--skills off") {
+		t.Fatalf("create args %q missing \"--skills off\"", joined)
+	}
+
+	for _, want := range []string{"create", "--template img", "--name myapp", "--kit /kit", "claude ."} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("create args %q missing %q", joined, want)
+		}
+	}
+}
+
 func TestJqSettingsFilterIncludesPlugins(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Claude.Plugins.Install = []string{"foo@bar"}
